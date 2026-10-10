@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+xrp_forecast.html
+*.forecast.csv
