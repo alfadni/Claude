@@ -2,5 +2,5 @@ __pycache__/
 *.pyc
 xrp_forecast.html
 *.forecast.csv
-sudan*.md
-sudan*.json
+/sudan*.md
+/sudan*.json
