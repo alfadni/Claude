@@ -1,5 +1,7 @@
 # XRP price forecasts
 
+> This repository also contains **Masroof**, an offline-first personal finance app — see [`masroof/README.md`](masroof/README.md).
+
 Statistical forecasts of future XRP/USD prices, with uncertainty bands and a
 walk-forward backtest so you can see how much to trust them.
 
