@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Position Fix Inspector</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=JetBrains+Mono:wght@400;600&family=Source+Sans+3:wght@400;600&display=swap">
+<style>
+/* Layout: instrument panel. Status bar on top, primary fix readout, then a grid of measurement modules. */
+:root {
+  --bg: #eef1f4;
+  --panel: #ffffff;
+  --ink: #17202b;
+  --muted: #5b6878;
+  --line: #d4dbe3;
+  --accent: #d2561c;        /* survey-marker orange */
+  --accent-ink: #ffffff;
+  --good: #1f7a4d;
+  --warn: #a86a00;
+  --bad: #b3261e;
+  --plot-bg: #f6f8fa;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151c; --panel: #17202a; --ink: #e5ebf1; --muted: #93a1b1; --line: #2a3644;
+    --accent: #f07a3e; --accent-ink: #1a0d05; --good: #4cc38a; --warn: #e3a53a; --bad: #f2726a;
+    --plot-bg: #121a22; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151c; --panel: #17202a; --ink: #e5ebf1; --muted: #93a1b1; --line: #2a3644;
+  --accent: #f07a3e; --accent-ink: #1a0d05; --good: #4cc38a; --warn: #e3a53a; --bad: #f2726a;
+  --plot-bg: #121a22; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 16px/1.5 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: max(20px, env(safe-area-inset-top, 0px)) 40px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 20px; }
+h1, h2 { font-family: var(--font-display); margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(1.5rem, 3vw, 2rem); font-weight: 800; letter-spacing: -0.01em; }
+h2 { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.mono, .val { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+small { font-size: 0.82rem; }
+
+header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 60ch; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+button {
+  font: 600 0.95rem var(--font-body); border-radius: 6px; padding: 9px 16px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.status { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pill {
+  display: inline-flex; align-items: center; gap: 6px; font: 600 0.8rem var(--font-body);
+  padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel);
+}
+.pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.pill.good::before { background: var(--good); }
+.pill.warn::before { background: var(--warn); }
+.pill.bad::before { background: var(--bad); }
+.pill.live::before { background: var(--good); animation: pulse 1.4s infinite; }
+@keyframes pulse { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .pill.live::before { animation: none; } }
+
+.alert { border: 1px solid var(--bad); border-left-width: 4px; background: var(--panel); padding: 12px 16px; border-radius: 6px; }
+.alert.warn { border-color: var(--warn); }
+.alert strong { display: block; }
+
+.fix {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 20px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+}
+.coords { display: grid; gap: 4px; min-width: 0; }
+.coords .big { font: 600 clamp(1.4rem, 4vw, 2.3rem)/1.15 var(--font-data); overflow-wrap: anywhere; }
+.coords .dms { color: var(--muted); font-family: var(--font-data); font-size: 0.95rem; }
+.coords .links { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 6px; font-size: 0.92rem; }
+a { color: var(--accent); }
+.quality { display: grid; gap: 8px; align-content: start; min-width: 0; }
+.quality .grade { font: 800 1.6rem var(--font-display); }
+.meter { height: 8px; border-radius: 4px; background: var(--plot-bg); border: 1px solid var(--line); overflow: hidden; }
+.meter span { display: block; height: 100%; width: 0; background: var(--muted); transition: width .4s; }
+
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.module { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+dl { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; }
+dt { color: var(--muted); font-size: 0.9rem; }
+dd { margin: 0; text-align: right; font-family: var(--font-data); font-variant-numeric: tabular-nums; overflow-wrap: break-word; }
+.wide { grid-column: 1 / -1; }
+canvas { width: 100%; max-width: 100%; display: block; background: var(--plot-bg); border: 1px solid var(--line); border-radius: 6px; }
+#scatter { aspect-ratio: 1 / 1; }
+#spark { aspect-ratio: 3 / 1; }
+.address { font-size: 1rem; min-height: 1.5em; }
+.log { max-height: 220px; overflow: auto; font: 0.82rem/1.45 var(--font-data); margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.log li { display: grid; grid-template-columns: 7.5ch 1fr; gap: 8px; }
+.log .t { color: var(--muted); }
+.log .bad { color: var(--bad); } .log .warn { color: var(--warn); } .log .good { color: var(--good); }
+.sat p { margin: 0; max-width: 65ch; }
+.sat table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.sat th, .sat td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.sat th { color: var(--muted); font-weight: 600; }
+.tablewrap { overflow-x: auto; }
+
+@media (max-width: 720px) { .fix { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>Position Fix Inspector</h1>
+      <p>Reads your device's location through the browser, grades the fix, and converts it into common coordinate systems. Nothing leaves this page unless you press <em>Look up address</em>.</p>
+    </div>
+    <div class="actions">
+      <button id="btnOnce" class="primary">Get my location</button>
+      <button id="btnWatch">Track continuously</button>
+      <button id="btnStop" disabled>Stop</button>
+    </div>
+  </header>
+
+  <div class="status" aria-live="polite">
+    <span id="pillState" class="pill">Idle</span>
+    <span id="pillPerm" class="pill">Permission: checking…</span>
+    <span id="pillSecure" class="pill">Secure context: …</span>
+    <span id="pillSamples" class="pill">0 fixes</span>
+  </div>
+
+  <div id="alert" class="alert" role="alert" hidden><strong id="alertTitle"></strong><span id="alertBody"></span></div>
+
+  <section class="fix" aria-label="Current fix">
+    <div class="coords">
+      <h2>Latitude, Longitude (WGS 84)</h2>
+      <div id="latlon" class="big">—</div>
+      <div id="dms" class="dms">Press “Get my location” and allow access when the browser asks.</div>
+      <div class="links">
+        <button id="btnCopy" disabled>Copy coordinates</button>
+        <a id="lnkOsm" href="#" target="_blank" rel="noopener" hidden>Open in OpenStreetMap</a>
+        <a id="lnkGmaps" href="#" target="_blank" rel="noopener" hidden>Open in Google Maps</a>
+      </div>
+    </div>
+    <div class="quality">
+      <h2>Fix quality</h2>
+      <div id="grade" class="grade">—</div>
+      <div class="meter" aria-hidden="true"><span id="meter"></span></div>
+      <dl>
+        <dt>Horizontal accuracy</dt><dd id="acc">—</dd>
+        <dt>Likely source</dt><dd id="source">—</dd>
+        <dt>Fix age</dt><dd id="age">—</dd>
+      </dl>
+    </div>
+  </section>
+
+  <div class="grid">
+    <section class="module">
+      <h2>Altitude</h2>
+      <dl>
+        <dt>Height (above WGS 84 ellipsoid)</dt><dd id="alt">—</dd>
+        <dt>Vertical accuracy</dt><dd id="altAcc">—</dd>
+      </dl>
+      <small class="muted">Browsers report height above the ellipsoid, which can differ from sea level by tens of metres depending on region.</small>
+    </section>
+
+    <section class="module">
+      <h2>Motion</h2>
+      <dl>
+        <dt>Speed</dt><dd id="speed">—</dd>
+        <dt>Heading</dt><dd id="heading">—</dd>
+        <dt>Distance since first fix</dt><dd id="drift">—</dd>
+      </dl>
+      <small class="muted">Speed and heading come only from satellite fixes while moving; stationary or Wi‑Fi fixes report none.</small>
+    </section>
+
+    <section class="module">
+      <h2>Grid references</h2>
+      <dl>
+        <dt>UTM</dt><dd id="utm">—</dd>
+        <dt>Geohash</dt><dd id="geohash">—</dd>
+        <dt>Decimal (5 dp ≈ 1.1 m)</dt><dd id="dec5">—</dd>
+      </dl>
+    </section>
+
+    <section class="module">
+      <h2>Timing</h2>
+      <dl>
+        <dt>Fix time (local)</dt><dd id="tLocal">—</dd>
+        <dt>Fix time (UTC)</dt><dd id="tUtc">—</dd>
+        <dt>Time to first fix</dt><dd id="ttff">—</dd>
+      </dl>
+    </section>
+
+    <section class="module">
+      <h2>Scatter of fixes</h2>
+      <canvas id="scatter" width="480" height="480" aria-label="Plot of each fix relative to the average position"></canvas>
+      <small class="muted">Each dot is one fix, centred on the average. The ring is the latest reported accuracy radius. Tight clusters indicate a stable satellite lock.</small>
+    </section>
+
+    <section class="module">
+      <h2>Accuracy over time</h2>
+      <canvas id="spark" width="600" height="200" aria-label="Accuracy in metres over successive fixes"></canvas>
+      <small class="muted" id="sparkNote">Lower is better. Satellite receivers usually tighten over the first 30–60 seconds outdoors.</small>
+    </section>
+
+    <section class="module">
+      <h2>Address</h2>
+      <div id="address" class="address muted">Not looked up.</div>
+      <div class="actions"><button id="btnAddr" disabled>Look up address</button></div>
+      <small class="muted">Sends the coordinates to OpenStreetMap Nominatim for reverse geocoding. Data © OpenStreetMap contributors, ODbL.</small>
+    </section>
+
+    <section class="module">
+      <h2>Event log</h2>
+      <ul id="log" class="log"></ul>
+    </section>
+
+    <section class="module sat wide">
+      <h2>Satellite data: what a web page can and cannot see</h2>
+      <p>Phones fuse GNSS satellites (GPS, GLONASS, Galileo, BeiDou), Wi‑Fi, cell towers and motion sensors into one position. The W3C Geolocation API hands a web page only the fused result. Satellite count, signal strength, constellation and DOP values stay inside the operating system. The “likely source” above is inferred from accuracy and altitude, and the page labels it as an inference.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Field</th><th>Web page (this tool)</th><th>Native Android</th><th>Native iOS</th></tr></thead>
+          <tbody>
+            <tr><td>Lat / lon / accuracy</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+            <tr><td>Altitude, speed, heading</td><td>Yes, when the device provides them</td><td>Yes</td><td>Yes</td></tr>
+            <tr><td>Satellites in view / used</td><td>No</td><td>Yes (GnssStatus)</td><td>No public API</td></tr>
+            <tr><td>Per‑satellite C/N₀, elevation, azimuth</td><td>No</td><td>Yes (GnssStatus)</td><td>No public API</td></tr>
+            <tr><td>Raw pseudoranges</td><td>No</td><td>Yes on supported chips (GnssMeasurement)</td><td>No</td></tr>
+            <tr><td>Mock / spoofed location flag</td><td>No (this page uses a jump heuristic)</td><td>Yes (Location.isMock)</td><td>Partial (iOS 15+ sourceInformation)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const geo = "geolocation" in navigator ? navigator.geolocation : null;
+  const OPTS = { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 };
+  const STALE_MS = 60000;           // fix older than this is treated as cached
+  const MAX_PLAUSIBLE_MS = 340;     // m/s; faster than an airliner -> implausible jump
+  const fixes = [];
+  let watchId = null, requestStart = 0, firstFixAt = 0, lastFix = null, ageTimer = null;
+
+  // ---------- logging & status ----------
+  function log(msg, level = "") {
+    const li = document.createElement("li");
+    const t = document.createElement("span"); t.className = "t";
+    t.textContent = new Date().toLocaleTimeString([], { hour12: false });
+    const m = document.createElement("span"); m.className = level; m.textContent = msg;
+    li.append(t, m); $("log").prepend(li);
+  }
+  function pill(el, text, cls = "") { el.textContent = text; el.className = "pill " + cls; }
+  function showAlert(title, body, kind = "") {
+    $("alertTitle").textContent = title; $("alertBody").textContent = body;
+    $("alert").className = "alert " + kind; $("alert").hidden = false;
+  }
+  function clearAlert() { $("alert").hidden = true; }
+  function setBusy(mode) {   // mode: idle | once | watch
+    $("btnOnce").disabled = mode !== "idle";
+    $("btnWatch").disabled = mode !== "idle";
+    $("btnStop").disabled = mode === "idle";
+  }
+
+  // ---------- formatting ----------
+  const fmtM = m => m == null || isNaN(m) ? "—" : m < 1000 ? `${m.toFixed(m < 10 ? 1 : 0)} m` : `${(m / 1000).toFixed(2)} km`;
+  function dms(v, pos, neg) {
+    const h = v >= 0 ? pos : neg; v = Math.abs(v);
+    let d = Math.floor(v), mFloat = (v - d) * 60, m = Math.floor(mFloat), s = (mFloat - m) * 60;
+    if (s >= 59.995) { s = 0; m += 1; } if (m === 60) { m = 0; d += 1; }
+    return `${d}°${String(m).padStart(2, "0")}′${s.toFixed(2).padStart(5, "0")}″${h}`;
+  }
+  function compass(deg) {
+    const pts = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+    return pts[Math.round(deg / 22.5) % 16];
+  }
+  function fmtAge(ms) {
+    if (ms < 1000) return "just now";
+    const s = Math.round(ms / 1000);
+    return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
+  }
+
+  // ---------- geodesy ----------
+  const R = 6371008.8;
+  const rad = d => d * Math.PI / 180;
+  function haversine(a, b) {
+    const dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+  function toUTM(lat, lon) {
+    if (lat < -80 || lat > 84) return null;   // UTM undefined at the poles (UPS applies)
+    let zone = Math.floor((lon + 180) / 6) + 1;
+    if (lat >= 56 && lat < 64 && lon >= 3 && lon < 12) zone = 32;          // Norway
+    if (lat >= 72 && lat < 84) {                                            // Svalbard
+      if (lon >= 0 && lon < 9) zone = 31; else if (lon >= 9 && lon < 21) zone = 33;
+      else if (lon >= 21 && lon < 33) zone = 35; else if (lon >= 33 && lon < 42) zone = 37;
+    }
+    const a = 6378137, f = 1 / 298.257223563, k0 = 0.9996;
+    const e2 = f * (2 - f), e4 = e2 * e2, e6 = e4 * e2, ep2 = e2 / (1 - e2);
+    const phi = rad(lat), lam = rad(lon), lam0 = rad((zone - 1) * 6 - 180 + 3);
+    const sin = Math.sin(phi), cos = Math.cos(phi), tan = Math.tan(phi);
+    const N = a / Math.sqrt(1 - e2 * sin * sin), T = tan * tan, C = ep2 * cos * cos, A = cos * (lam - lam0);
+    const M = a * ((1 - e2 / 4 - 3 * e4 / 64 - 5 * e6 / 256) * phi
+      - (3 * e2 / 8 + 3 * e4 / 32 + 45 * e6 / 1024) * Math.sin(2 * phi)
+      + (15 * e4 / 256 + 45 * e6 / 1024) * Math.sin(4 * phi)
+      - (35 * e6 / 3072) * Math.sin(6 * phi));
+    const E = k0 * N * (A + (1 - T + C) * A ** 3 / 6 + (5 - 18 * T + T * T + 72 * C - 58 * ep2) * A ** 5 / 120) + 500000;
+    let Nn = k0 * (M + N * tan * (A * A / 2 + (5 - T + 9 * C + 4 * C * C) * A ** 4 / 24
+      + (61 - 58 * T + T * T + 600 * C - 330 * ep2) * A ** 6 / 720));
+    if (lat < 0) Nn += 10000000;
+    const band = "CDEFGHJKLMNPQRSTUVWXX"[Math.floor((lat + 80) / 8)];
+    return `${zone}${band} ${Math.round(E)}E ${Math.round(Nn)}N`;
+  }
+  function geohash(lat, lon, precision = 9) {
+    const B32 = "0123456789bcdefghjkmnpqrstuvwxyz";
+    let latR = [-90, 90], lonR = [-180, 180], even = true, bit = 0, ch = 0, out = "";
+    while (out.length < precision) {
+      const r = even ? lonR : latR, v = even ? lon : lat, mid = (r[0] + r[1]) / 2;
+      if (v >= mid) { ch = (ch << 1) | 1; r[0] = mid; } else { ch <<= 1; r[1] = mid; }
+      even = !even;
+      if (++bit === 5) { out += B32[ch]; bit = 0; ch = 0; }
+    }
+    return out;
+  }
+
+  // ---------- fix grading (heuristic, labelled as such in the UI) ----------
+  function grade(acc) {
+    if (acc <= 10) return { label: "Excellent", cls: "good", pct: 100 };
+    if (acc <= 30) return { label: "Good", cls: "good", pct: 75 };
+    if (acc <= 100) return { label: "Fair", cls: "warn", pct: 50 };
+    if (acc <= 1000) return { label: "Poor", cls: "bad", pct: 25 };
+    return { label: "Very poor", cls: "bad", pct: 8 };
+  }
+  function inferSource(c) {
+    if (c.accuracy <= 25 && c.altitude != null) return "GNSS satellites (inferred)";
+    if (c.accuracy <= 25) return "GNSS or dense Wi‑Fi (inferred)";
+    if (c.accuracy <= 150) return "Wi‑Fi / fused (inferred)";
+    if (c.accuracy <= 5000) return "Cell towers (inferred)";
+    return "IP address (inferred)";
+  }
+
+  // ---------- rendering ----------
+  function render(fix) {
+    const c = fix.coords;
+    $("latlon").textContent = `${c.latitude.toFixed(6)}, ${c.longitude.toFixed(6)}`;
+    $("dms").textContent = `${dms(c.latitude, "N", "S")}  ${dms(c.longitude, "E", "W")}`;
+    $("dec5").textContent = `${c.latitude.toFixed(5)}, ${c.longitude.toFixed(5)}`;
+    const osm = `https://www.openstreetmap.org/?mlat=${c.latitude}&mlon=${c.longitude}#map=17/${c.latitude}/${c.longitude}`;
+    $("lnkOsm").href = osm; $("lnkOsm").hidden = false;
+    $("lnkGmaps").href = `https://www.google.com/maps/search/?api=1&query=${c.latitude},${c.longitude}`; $("lnkGmaps").hidden = false;
+    $("btnCopy").disabled = false; $("btnAddr").disabled = false;
+
+    const g = grade(c.accuracy);
+    $("grade").textContent = g.label;
+    $("grade").style.color = `var(--${g.cls})`;
+    $("meter").style.width = g.pct + "%";
+    $("meter").style.background = `var(--${g.cls})`;
+    $("acc").textContent = `± ${fmtM(c.accuracy)}`;
+    $("source").textContent = inferSource(c);
+
+    $("alt").textContent = c.altitude == null ? "Not reported" : `${c.altitude.toFixed(1)} m`;
+    $("altAcc").textContent = c.altitudeAccuracy == null ? "Not reported" : `± ${fmtM(c.altitudeAccuracy)}`;
+    $("speed").textContent = c.speed == null || isNaN(c.speed) ? "Not reported"
+      : `${c.speed.toFixed(2)} m/s · ${(c.speed * 3.6).toFixed(1)} km/h`;
+    $("heading").textContent = c.heading == null || isNaN(c.heading) ? "Not reported"
+      : `${c.heading.toFixed(0)}° ${compass(c.heading)}`;
+    $("drift").textContent = fixes.length > 1 ? fmtM(haversine(fixes[0], fixes[fixes.length - 1])) : "—";
+
+    $("utm").textContent = toUTM(c.latitude, c.longitude) ?? "Outside UTM (polar)";
+    $("geohash").textContent = geohash(c.latitude, c.longitude);
+
+    const t = new Date(fix.timestamp);
+    $("tLocal").textContent = t.toLocaleString();
+    $("tUtc").textContent = t.toISOString().replace("T", " ").replace(/\.\d+Z$/, "Z");
+    $("ttff").textContent = firstFixAt ? `${((firstFixAt - requestStart) / 1000).toFixed(1)} s` : "—";
+    pill($("pillSamples"), `${fixes.length} fix${fixes.length === 1 ? "" : "es"}`);
+    updateAge(); drawScatter(); drawSpark();
+  }
+  function updateAge() {
+    if (!lastFix) return;
+    const age = Date.now() - lastFix.timestamp;
+    $("age").textContent = fmtAge(age);
+    $("age").style.color = age > STALE_MS ? "var(--warn)" : "";
+  }
+
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function prepCanvas(cv) {
+    const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+    return { ctx, w, h };
+  }
+  function drawScatter() {
+    const { ctx, w, h } = prepCanvas($("scatter"));
+    const cx = w / 2, cy = h / 2, ink = css("--muted"), line = css("--line"), acc = css("--accent");
+    ctx.strokeStyle = line; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(cx, 8); ctx.lineTo(cx, h - 8); ctx.moveTo(8, cy); ctx.lineTo(w - 8, cy); ctx.stroke();
+    ctx.fillStyle = ink; ctx.font = `11px ${css("--font-data")}`; ctx.textAlign = "center"; ctx.fillText("N", cx, 18);
+    if (!fixes.length) { ctx.fillText("No fixes yet", cx, cy - 10); return; }
+    const mLat = fixes.reduce((s, f) => s + f.lat, 0) / fixes.length;
+    const mLon = fixes.reduce((s, f) => s + f.lon, 0) / fixes.length;
+    const kx = 111320 * Math.cos(rad(mLat)), ky = 110540;
+    const pts = fixes.map(f => ({ x: (f.lon - mLon) * kx, y: (f.lat - mLat) * ky }));
+    const lastAcc = fixes[fixes.length - 1].acc;
+    const extent = Math.max(5, lastAcc, ...pts.map(p => Math.hypot(p.x, p.y))) * 1.15;
+    const s = (Math.min(w, h) / 2 - 14) / extent;
+    const last = pts[pts.length - 1];
+    ctx.strokeStyle = acc; ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.arc(cx + last.x * s, cy - last.y * s, lastAcc * s, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    pts.forEach((p, i) => {
+      const isLast = i === pts.length - 1;
+      ctx.fillStyle = isLast ? acc : ink; ctx.globalAlpha = isLast ? 1 : 0.55;
+      ctx.beginPath(); ctx.arc(cx + p.x * s, cy - p.y * s, isLast ? 5 : 3, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.globalAlpha = 1; ctx.fillStyle = ink; ctx.textAlign = "right";
+    ctx.fillText(`edge = ${fmtM(extent)}`, w - 10, h - 10);
+  }
+  function drawSpark() {
+    const { ctx, w, h } = prepCanvas($("spark"));
+    const ink = css("--muted"), acc = css("--accent"), line = css("--line");
+    ctx.font = `11px ${css("--font-data")}`; ctx.fillStyle = ink;
+    if (fixes.length < 2) { ctx.textAlign = "center"; ctx.fillText("Needs at least two fixes. Use “Track continuously”.", w / 2, h / 2); return; }
+    const vals = fixes.map(f => f.acc), max = Math.max(...vals) * 1.1, min = 0;
+    const pad = { l: 44, r: 10, t: 10, b: 18 }, iw = w - pad.l - pad.r, ih = h - pad.t - pad.b;
+    const X = i => pad.l + (i / (vals.length - 1)) * iw, Y = v => pad.t + ih - ((v - min) / (max - min)) * ih;
+    ctx.strokeStyle = line; ctx.lineWidth = 1; ctx.textAlign = "right";
+    [0, 0.5, 1].forEach(fr => {
+      const v = min + fr * (max - min), y = Y(v);
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+      ctx.fillText(fmtM(v), pad.l - 6, y + 4);
+    });
+    ctx.beginPath(); vals.forEach((v, i) => i ? ctx.lineTo(X(i), Y(v)) : ctx.moveTo(X(i), Y(v)));
+    ctx.strokeStyle = acc; ctx.lineWidth = 2; ctx.stroke();
+    ctx.lineTo(X(vals.length - 1), Y(0)); ctx.lineTo(X(0), Y(0)); ctx.closePath();
+    ctx.globalAlpha = 0.12; ctx.fillStyle = acc; ctx.fill(); ctx.globalAlpha = 1;
+    ctx.fillStyle = acc; ctx.beginPath(); ctx.arc(X(vals.length - 1), Y(vals[vals.length - 1]), 4, 0, Math.PI * 2); ctx.fill();
+    $("sparkNote").textContent = `Best ${fmtM(Math.min(...vals))}, latest ${fmtM(vals[vals.length - 1])} over ${vals.length} fixes. Lower is better.`;
+  }
+
+  // ---------- geolocation callbacks ----------
+  function onFix(pos) {
+    const c = pos.coords;
+    if (!firstFixAt) { firstFixAt = performance.now(); log(`First fix in ${((firstFixAt - requestStart) / 1000).toFixed(1)} s`, "good"); }
+    const f = { lat: c.latitude, lon: c.longitude, acc: c.accuracy, t: pos.timestamp };
+
+    // Negative-path checks on every fix
+    const age = Date.now() - pos.timestamp;
+    if (age > STALE_MS) log(`Fix is ${fmtAge(age)} old: browser returned a cached position`, "warn");
+    if (c.accuracy > 1000) log(`Low precision (± ${fmtM(c.accuracy)}): likely IP or cell based. Try outdoors with Wi‑Fi on.`, "warn");
+    if (lastFix) {
+      const prev = fixes[fixes.length - 1], dt = (pos.timestamp - prev.t) / 1000, d = haversine(prev, f);
+      if (dt > 0 && d > prev.acc + c.accuracy && d / dt > MAX_PLAUSIBLE_MS) {
+        log(`Implausible jump of ${fmtM(d)} in ${dt.toFixed(1)} s. Possible spoofing or a switch between positioning sources.`, "bad");
+        showAlert("Location jump detected. ", `The position moved ${fmtM(d)} in ${dt.toFixed(1)} s, which no vehicle can do. Treat this fix with caution.`, "warn");
+      }
+      if (d < 0.01 && c.accuracy === prev.acc) {          // duplicate delivery, ignore
+        if (watchId === null) { pill($("pillState"), "Fix acquired", "good"); setBusy("idle"); }
+        return;
+      }
+    }
+
+    fixes.push(f); if (fixes.length > 500) fixes.shift();
+    lastFix = pos;
+    if (watchId === null) { pill($("pillState"), "Fix acquired", "good"); setBusy("idle"); }
+    else pill($("pillState"), "Tracking", "live");
+    if (fixes.length === 1 || c.accuracy <= 30) clearAlert();
+    log(`Fix ± ${fmtM(c.accuracy)} at ${c.latitude.toFixed(5)}, ${c.longitude.toFixed(5)}`);
+    render(pos);
+  }
+
+  function onError(err) {
+    const map = {
+      1: ["Location permission denied. ", "Allow location for this site in your browser's site settings (the icon left of the address bar), then try again. On phones, also check that the browser has location access in system settings."],
+      2: ["Position unavailable. ", "The device could not determine a location. Turn on Location Services / GPS, enable Wi‑Fi, or move near a window or outdoors."],
+      3: ["Timed out waiting for a fix. ", `No position within ${OPTS.timeout / 1000} s. Satellite cold starts can take longer indoors. Try again outdoors, or use Track continuously.`]
+    };
+    const [title, body] = map[err.code] || ["Location error. ", err.message || "Unknown error."];
+    showAlert(title, body, err.code === 3 ? "warn" : "");
+    log(`${title.trim()} (code ${err.code}${err.message ? `: ${err.message}` : ""})`, err.code === 3 ? "warn" : "bad");
+    if (err.code === 1) stop("Permission denied", "bad");
+    else if (watchId === null) { pill($("pillState"), err.code === 3 ? "Timed out" : "No fix", err.code === 3 ? "warn" : "bad"); setBusy("idle"); }
+  }
+
+  function begin(continuous) {
+    clearAlert();
+    if (!preflight()) return;
+    requestStart = performance.now(); firstFixAt = 0;
+    pill($("pillState"), "Acquiring…", "warn");
+    log(continuous ? "Started continuous tracking (high accuracy)" : "Requested a single high‑accuracy fix");
+    if (continuous) { setBusy("watch"); watchId = geo.watchPosition(onFix, onError, OPTS); }
+    else { setBusy("once"); geo.getCurrentPosition(onFix, onError, OPTS); }
+  }
+  function stop(label = "Stopped", cls = "") {
+    if (watchId !== null) { geo.clearWatch(watchId); watchId = null; log("Tracking stopped"); }
+    pill($("pillState"), label, cls); setBusy("idle");
+  }
+
+  function preflight() {
+    if (!geo) {
+      showAlert("Geolocation not supported. ", "This browser does not provide the Geolocation API. Use a current version of Chrome, Safari, Firefox or Edge.");
+      log("navigator.geolocation missing", "bad"); setBusy("idle"); $("btnOnce").disabled = $("btnWatch").disabled = true; return false;
+    }
+    if (!window.isSecureContext) {
+      showAlert("Page must be served over HTTPS. ", "Browsers only allow location on secure pages (https:// or localhost). Host this file on an HTTPS server, or run a local server such as: python3 -m http.server");
+      log("Insecure context: geolocation blocked by browser", "bad"); return false;
+    }
+    return true;
+  }
+
+  // ---------- permission state ----------
+  function watchPermission() {
+    if (!navigator.permissions?.query) { pill($("pillPerm"), "Permission: unknown (asked on use)"); return; }
+    navigator.permissions.query({ name: "geolocation" }).then(st => {
+      const show = () => {
+        const cls = { granted: "good", prompt: "warn", denied: "bad" }[st.state] || "";
+        pill($("pillPerm"), `Permission: ${st.state}`, cls);
+      };
+      show();
+      st.onchange = () => { show(); log(`Permission changed to “${st.state}”`, st.state === "denied" ? "bad" : ""); if (st.state === "denied") stop("Permission denied", "bad"); };
+      if (st.state === "denied") showAlert("Location is blocked for this site. ", "Re-enable it in your browser's site settings, then reload.");
+    }).catch(() => pill($("pillPerm"), "Permission: unknown (asked on use)"));
+  }
+
+  // ---------- address lookup (explicit, user-initiated) ----------
+  async function lookupAddress() {
+    if (!lastFix) return;
+    const { latitude: lat, longitude: lon } = lastFix.coords;
+    $("btnAddr").disabled = true; $("address").textContent = "Looking up…";
+    const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), 10000);
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`,
+        { signal: ctrl.signal, headers: { "Accept-Language": navigator.language || "en" } });
+      if (r.status === 429) throw new Error("Address service is rate limiting requests. Wait a minute and try again.");
+      if (!r.ok) throw new Error(`Address service returned HTTP ${r.status}.`);
+      const j = await r.json();
+      if (j.error) throw new Error(`No address found here (${j.error}).`);
+      $("address").textContent = j.display_name; $("address").classList.remove("muted");
+      const a = j.address || {};
+      log(`Address resolved: ${[a.city || a.town || a.village, a.country].filter(Boolean).join(", ") || "ok"}`, "good");
+    } catch (e) {
+      const msg = e.name === "AbortError" ? "Address lookup timed out after 10 s. Check your connection and try again." : e.message;
+      $("address").textContent = msg; $("address").classList.add("muted"); log(msg, "warn");
+    } finally { clearTimeout(to); setTimeout(() => { $("btnAddr").disabled = !lastFix; }, 1100); } // Nominatim: max 1 req/s
+  }
+
+  async function copyCoords() {
+    if (!lastFix) return;
+    const text = `${lastFix.coords.latitude.toFixed(6)}, ${lastFix.coords.longitude.toFixed(6)}`;
+    try { await navigator.clipboard.writeText(text); log("Coordinates copied", "good"); $("btnCopy").textContent = "Copied"; }
+    catch { const r = document.createRange(); r.selectNodeContents($("latlon")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("btnCopy").textContent = "Selected, press Ctrl/⌘+C"; }
+    setTimeout(() => { $("btnCopy").textContent = "Copy coordinates"; }, 2000);
+  }
+
+  // ---------- wiring ----------
+  $("btnOnce").addEventListener("click", () => begin(false));
+  $("btnWatch").addEventListener("click", () => begin(true));
+  $("btnStop").addEventListener("click", () => stop());
+  $("btnAddr").addEventListener("click", lookupAddress);
+  $("btnCopy").addEventListener("click", copyCoords);
+  document.addEventListener("visibilitychange", () => { if (document.hidden && watchId !== null) log("Page hidden: browsers may pause updates in the background", "warn"); });
+  window.addEventListener("resize", () => { drawScatter(); drawSpark(); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => { drawScatter(); drawSpark(); });
+
+  pill($("pillSecure"), `Secure context: ${window.isSecureContext ? "yes" : "no"}`, window.isSecureContext ? "good" : "bad");
+  if (!geo) preflight();
+  else if (!window.isSecureContext) preflight();
+  watchPermission();
+  ageTimer = setInterval(updateAge, 1000);
+  drawScatter(); drawSpark();
+  log("Ready. Location is read only after you press a button.");
+})();
+</script>
+</body>
+</html>
