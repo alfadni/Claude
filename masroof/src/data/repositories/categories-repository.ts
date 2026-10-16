@@ -18,6 +18,9 @@ import { withUnitOfWork } from '../unit-of-work';
 
 export type CategoryRow = typeof categories.$inferSelect;
 
+/** How many of the newest transactions feed "recent categories". */
+const RECENT_WINDOW = 300;
+
 export function createCategoriesRepository(deps: DataDeps) {
   const { db } = deps;
   const get = (id: string) => db.select().from(categories).where(eq(categories.id, id)).get();
@@ -74,15 +77,18 @@ export function createCategoriesRepository(deps: DataDeps) {
 
     /** Most recently used first, for the quick-add grid (spec 5.3). */
     recentIds(kind: CategoryKind, limit = 8): string[] {
+      // Look at the newest entries only (index on created_at), not the whole history.
       return deps.sql
         .all<{ id: string }>(
-          `SELECT s.category_id AS id FROM transaction_splits s
-           JOIN transactions t ON t.id = s.transaction_id
+          `SELECT s.category_id AS id FROM (
+             SELECT id, created_at FROM transactions WHERE deleted_at IS NULL
+             ORDER BY created_at DESC LIMIT ?
+           ) t
+           JOIN transaction_splits s ON s.transaction_id = t.id AND s.deleted_at IS NULL
            JOIN categories c ON c.id = s.category_id
-           WHERE s.deleted_at IS NULL AND t.deleted_at IS NULL AND c.kind = ?
-             AND c.is_archived = 0 AND c.deleted_at IS NULL
+           WHERE c.kind = ? AND c.is_archived = 0 AND c.deleted_at IS NULL
            GROUP BY s.category_id ORDER BY max(t.created_at) DESC LIMIT ?`,
-          [kind, limit],
+          [RECENT_WINDOW, kind, limit],
         )
         .map((r) => r.id);
     },

@@ -24,6 +24,7 @@
     "@noble/ciphers": "2.4.0",
     "@noble/hashes": "2.4.0",
     "@react-native-community/datetimepicker": "9.2.1",
+    "@sentry/react-native": "~8.28.0",
     "drizzle-orm": "0.45.4",
     "expo": "~58.0.11",
     "expo-background-task": "~58.0.11",

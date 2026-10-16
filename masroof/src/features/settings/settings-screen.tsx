@@ -74,7 +74,8 @@ export function SettingsScreen({
       | 'goals'
       | 'reports'
       | 'fx'
-      | 'currency',
+      | 'currency'
+      | 'privacy',
   ) => void;
   t: TFunction;
 }) {
@@ -173,6 +174,12 @@ export function SettingsScreen({
               variant="secondary"
               onPress={() => onNavigate('backup')}
               testID="nav-backup"
+            />
+            <Button
+              label={t('settings.privacy')}
+              variant="secondary"
+              onPress={() => onNavigate('privacy')}
+              testID="nav-privacy"
             />
             <Button
               label={t('settings.data')}

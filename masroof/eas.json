@@ -1,0 +1,17 @@
+{
+  "cli": { "version": ">= 16.0.0", "appVersionSource": "remote" },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": { "MASROOF_RELEASE": "1" }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": { "MASROOF_RELEASE": "1" }
+    }
+  }
+}

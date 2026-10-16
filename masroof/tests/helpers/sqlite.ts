@@ -28,6 +28,10 @@ export function betterSqliteExecutor(raw: Database.Database): SqlExecutor {
     run: (sql, params: readonly SqlValue[] = []) => {
       raw.prepare(sql).run(...params);
     },
+    runMany: (sql, rows) => {
+      const statement = raw.prepare(sql);
+      for (const params of rows) statement.run(...params);
+    },
     all: <T>(sql: string, params: readonly SqlValue[] = []) => {
       const stmt = raw.prepare(sql);
       return (stmt.reader ? stmt.all(...params) : (stmt.run(...params), [])) as T[];
