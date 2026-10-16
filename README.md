@@ -56,8 +56,47 @@ forecast against what happened. Two numbers matter:
 - **90% coverage** — should be near 90%. Much lower means the bands are too
   narrow.
 
+## HTTP API
+
+`xrp_forecast/api.py` serves the same forecasts over HTTP for the mobile app
+in [`mobile/`](mobile/README.md).
+
+```bash
+pip install -r requirements-api.txt
+uvicorn xrp_forecast.api:app --port 8000
+curl 'localhost:8000/v1/forecast?horizon=30&model=ensemble'
+```
+
+| Endpoint | Returns |
+| --- | --- |
+| `GET /v1/forecast?horizon=1..365&model=ensemble` | Last close, recent history, daily p05–p95 forecast, horizon summary, 30-day backtest, `stale` flag, disclaimer |
+| `GET /v1/health` | Liveness plus price-snapshot status (never calls CoinGecko) |
+
+How it behaves when things go wrong:
+
+- **Caching.** Prices are fetched at most once per `XRP_PRICE_TTL_SECONDS`
+  (default 1 h), and each forecast and backtest is computed once per price
+  snapshot. Client traffic never turns into CoinGecko traffic. Concurrent
+  requests on an expired snapshot share a single refresh.
+- **CoinGecko down.** The last good snapshot keeps being served with
+  `stale: true`, a `stale_reason` and `Cache-Control: no-store`, for up to
+  `XRP_MAX_SERVE_AGE_SECONDS` (default 3 days). After that, or with no
+  snapshot at all, the API returns `503 upstream_unavailable` with
+  `Retry-After: 60`.
+- **Feed stopped updating.** A last close more than 2 days old is flagged
+  stale even if the fetch itself succeeded.
+- **Bad input.** Returns `422 invalid_request` before any upstream call.
+  Errors are always `{"error": {"code", "message"}}`, and internal exception
+  text is never sent to clients.
+
+Other settings: `XRP_PRICES_CSV` serves prices from a CSV instead of
+CoinGecko (useful offline or for longer history), and `XRP_API_CORS_ORIGINS`
+restricts allowed origins (default `*`; the API is read-only and uses no
+credentials).
+
 ## Tests
 
 ```bash
+pip install -r requirements-api.txt
 python -m unittest discover tests
 ```

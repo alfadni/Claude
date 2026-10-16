@@ -1,98 +1,155 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { FALLBACK_DISCLAIMER, describeError, type ForecastError } from '@/api/client';
+import type { Horizon } from '@/api/types';
+import { BacktestTable } from '@/components/backtest-table';
+import { Banner } from '@/components/banner';
+import { ForecastChart } from '@/components/forecast-chart';
+import { ForecastSummary } from '@/components/forecast-summary';
+import { HorizonPicker } from '@/components/horizon-picker';
+import { useForecast, type ForecastState } from '@/hooks/use-forecast';
+import { ageInDays, formatAge, formatDate, formatUsd, STALE_AFTER_DAYS } from '@/lib/format';
+import { space, usePalette } from '@/lib/theme';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
+function retryHint(e: ForecastError): string {
+  if (e.retryAfterSeconds) {
+    return e.retryAfterSeconds <= 90
+      ? ' Try again in about a minute.'
+      : ` Try again in ${Math.ceil(e.retryAfterSeconds / 60)} minutes.`;
   }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+  return '';
+}
+
+export default function ForecastScreen() {
+  const c = usePalette();
+  const [horizon, setHorizon] = useState<Horizon>(30);
+  const { state, reload } = useForecast(horizon);
+  const disclaimer = state.status === 'ready' ? state.data.disclaimer : FALLBACK_DISCLAIMER;
+
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
+    <SafeAreaView
+      edges={['bottom', 'left', 'right']}
+      style={[styles.flex, { backgroundColor: c.background }]}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={state.status === 'ready' && state.refreshing}
+            onRefresh={reload}
+            tintColor={c.textMuted}
+          />
+        }>
+        <HorizonPicker value={horizon} onChange={setHorizon} />
+        <Body state={state} reload={reload} />
+      </ScrollView>
+      <View style={[styles.disclaimer, { borderColor: c.border, backgroundColor: c.surface }]}>
+        <Text testID="disclaimer" style={[styles.disclaimerText, { color: c.textMuted }]}>
+          {disclaimer}
+        </Text>
+      </View>
+    </SafeAreaView>
   );
 }
 
-export default function HomeScreen() {
+function Body({ state, reload }: { state: ForecastState; reload: () => void }) {
+  const c = usePalette();
+
+  if (state.status === 'loading') {
+    return (
+      <View style={styles.center} testID="loading">
+        <ActivityIndicator color={c.textMuted} />
+        <Text style={{ color: c.textMuted }}>Loading forecast…</Text>
+      </View>
+    );
+  }
+
+  if (state.status === 'error') {
+    return (
+      <Banner
+        testID="error"
+        tone="error"
+        title="Couldn't load the forecast"
+        message={describeError(state.error) + retryHint(state.error)}
+        actionLabel={state.error.kind === 'config' ? undefined : 'Retry'}
+        onAction={reload}
+      />
+    );
+  }
+
+  const { data, source, savedAt, error } = state;
+  const ageDays = ageInDays(data.data_as_of);
+  const stale = data.stale || ageDays > STALE_AFTER_DAYS;
+
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+    <View style={styles.sections}>
+      {error ? (
+        <Banner
+          testID="refresh-failed"
+          tone="warn"
+          title={
+            source === 'cache' && savedAt
+              ? `Showing forecast saved ${formatAge(savedAt)}`
+              : "Couldn't refresh"
+          }
+          message={describeError(error) + retryHint(error)}
+          actionLabel="Retry"
+          onAction={reload}
+        />
+      ) : null}
+      {stale ? (
+        <Banner
+          testID="stale"
+          tone="warn"
+          title="Prices may be out of date"
+          message={
+            ageDays > STALE_AFTER_DAYS
+              ? `The latest price is from ${formatDate(data.data_as_of)}.`
+              : (data.stale_reason ?? undefined)
+          }
+        />
+      ) : null}
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+      <View>
+        <Text style={[styles.price, { color: c.text }]} testID="last-close">
+          {formatUsd(data.last_close)}
+        </Text>
+        <Text style={{ color: c.textMuted }}>
+          XRP/USD close, {formatDate(data.data_as_of)}
+          {source === 'network' ? ` · updated ${formatAge(data.fetched_at)}` : ''}
+        </Text>
+      </View>
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+      <Card>
+        <ForecastChart data={data} />
+      </Card>
+      <Card>
+        <ForecastSummary data={data} />
+      </Card>
+      <Card>
+        <BacktestTable data={data} />
+      </Card>
+    </View>
   );
+}
+
+function Card({ children }: { children: React.ReactNode }) {
+  const c = usePalette();
+  return <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>{children}</View>;
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
+  flex: { flex: 1 },
+  content: { padding: space.lg, gap: space.lg, paddingBottom: space.xl },
+  sections: { gap: space.lg },
+  center: { alignItems: 'center', gap: space.sm, paddingVertical: 48 },
+  price: { fontSize: 34, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  card: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: space.lg },
+  disclaimer: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
   },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
-  },
+  disclaimerText: { fontSize: 12, lineHeight: 16, textAlign: 'center' },
 });
