@@ -15,6 +15,8 @@ module.exports = {
     {
       displayName: 'ui',
       preset: 'jest-expo',
+      // testTimeout is ignored inside `projects`; the setup file sets it.
+      setupFilesAfterEnv: ['<rootDir>/tests/ui/setup.ts'],
       moduleNameMapper: { '^@/(.*)$': '<rootDir>/src/$1' },
       testMatch: ['<rootDir>/tests/ui/**/*.test.tsx'],
       transformIgnorePatterns: [
