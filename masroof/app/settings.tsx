@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { useBootStore } from '@/features/boot/boot-store';
@@ -14,6 +15,7 @@ export default function SettingsRoute() {
       restartRequired={state.restartRequired}
       onChange={state.updateSetting}
       onRestart={() => void restartForDirection()}
+      onNavigate={(to) => router.push(`/${to}`)}
       t={t}
     />
   );

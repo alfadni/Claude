@@ -2,7 +2,17 @@
 
 Offline-first personal expense and income tracker for iOS and Android. Data never leaves the device: it is stored in an SQLCipher-encrypted database whose key lives in the Keychain / Android Keystore.
 
-> Status: **Phase 0 — Foundations** complete. See [`docs/ADR`](docs/ADR) for decisions and [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) for choices awaiting your confirmation.
+> Status: **Phase 1 — Core ledger** complete (on top of Phase 0 foundations). See [`docs/ADR`](docs/ADR) for decisions, [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) for choices awaiting your confirmation, and [`docs/JOURNEY_COVERAGE.md`](docs/JOURNEY_COVERAGE.md) for which test covers which journey path.
+
+## What works today
+
+- **Onboarding** (J1): language (EN/AR, RTL), base currency, first account; skippable (device defaults applied); resumable if the app is killed.
+- **Calendar home**: month calendar with ▲ income / ▼ expense day markers, month switcher, Income / Balance / Expense tabs, category bars, "spent so far" vs scheduled, net worth across included accounts.
+- **Quick add** (J2): keypad with calculator (`12+8.5`), recent categories first, last-used account, today / yesterday / any date, note, payee, tags, up to 5 encrypted receipt photos, drafts kept 10 minutes.
+- **Splits** (J3) with a live "remaining" indicator; **transfers** (J4), including cross-currency with a derived rate.
+- **Transactions list**: search (note, payee, amount), filters (date, type, account, category, tag), grouping by day or category, pagination.
+- **Edit / delete / undo** (J7): 5-second undo snackbar, 30-day Trash, edit scope prompt for recurring-generated transactions.
+- **Accounts** (cash, bank, mobile wallet, card, savings, other; archive, include-in-totals, currency locked once used) and **categories** (add, rename, reorder, archive; never hard-deleted).
 
 ## Requirements
 
@@ -30,15 +40,15 @@ Release builds: `npx eas-cli@latest build` (EAS config arrives in Phase 5).
 
 ```
 app/            Expo Router screens (thin; compose features + ui)
-src/domain/     pure TS: Money, FX, formatting, LocalDate, Period, ids, settings rules
-src/data/       SQL migrations, Drizzle schema, unit of work + audit, repositories, integrity checks
-src/services/   encrypted DB opening & key lifecycle, device locale defaults
-src/features/   boot, settings (more per phase)
+src/domain/     pure TS: Money, FX, calculator, formatting, LocalDate, Period, ids, ledger rules
+src/data/       SQL migrations, Drizzle schema, unit of work + audit, repositories, read models
+src/services/   encrypted DB + key lifecycle, attachment encryption, onboarding, device ports
+src/features/   screens + pure form state (home, quick-add, transactions, accounts, categories…)
 src/ui/         tokens, theme, RTL-safe primitives, AmountText, empty/loading/error states
 src/i18n/       en / ar resources, locale resolution, layout direction
 tests/node      domain + data + services + i18n (Node, better-sqlite3)
-tests/ui        components (jest-expo + Testing Library)
-e2e/            Maestro flows
+tests/ui        screens against an in-memory ledger (jest-expo + Testing Library)
+e2e/            Maestro journey flows (j1, j2, j3, j4, j7)
 ```
 
 Layering is `ui → features → services → domain ← data`, enforced by ESLint `no-restricted-imports`.
@@ -55,14 +65,6 @@ Layering is `ui → features → services → domain ← data`, enforced by ESLi
 | Schema = ORM            | Drift test compares the Drizzle tables with the migrated DDL                                                                |
 | No `any`                | `@typescript-eslint/no-explicit-any: error` + TS strict                                                                     |
 
-## Phase 0 coverage of journey prerequisites
+## Journey coverage
 
-Phase 0 has no user journeys, but these foundations already have tests for the journeys that will use them:
-
-- J1: device-default fallbacks for "skip everything"; Arabic → RTL direction switch.
-- J2: amount validation (empty / zero / negative / > 15 digits / too many decimals / Arabic digits).
-- J3: lossless `allocate`; DB integrity check detects split totals that don't match.
-- J4: same-account transfer rejected by the DB; cross-currency rate derivation.
-- J5: month-end clamping (rule on the 31st); `recurrence_key` uniqueness; ids that stay monotonic under clock skew.
-- J9: a database from a newer schema is refused and left untouched; failed migrations roll back.
-- §7: key lifecycle (first launch, reuse, key lost, wrong key, no SQLCipher, keystore failure).
+See [`docs/JOURNEY_COVERAGE.md`](docs/JOURNEY_COVERAGE.md). Phase 1 covers J1, J2, J3, J4 and J7. Two items are deferred, each with a reason: PIN/biometrics in onboarding (Phase 2) and budget alerts (Phase 3).

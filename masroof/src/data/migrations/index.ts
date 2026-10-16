@@ -1,10 +1,11 @@
 import type { SqlExecutor } from '../sql-executor';
 import { migration0001 } from './0001_initial';
+import { migration0002 } from './0002_ledger';
 
 export type Migration = Readonly<{ version: number; name: string; statements: readonly string[] }>;
 
 /** Append-only. Never edit a shipped migration; add a new one. */
-export const MIGRATIONS: readonly Migration[] = [migration0001];
+export const MIGRATIONS: readonly Migration[] = [migration0001, migration0002];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
 

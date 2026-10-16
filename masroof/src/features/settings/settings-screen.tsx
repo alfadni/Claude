@@ -1,12 +1,15 @@
 import type { TFunction } from 'i18next';
 
+import { NUMBER_FORMATS, type NumberFormatId, type Weekday } from '@/domain';
 import type { SettingKey, Settings } from '@/domain/settings';
 import { SUPPORTED_LOCALES } from '@/i18n';
 import { Button, Card, ErrorState, Row, Screen, Stack, Text } from '@/ui';
 
+import { tDynamic } from '../session/use-format';
+
 type Option<T> = { value: T; label: string };
 
-function Segmented<T extends string>({
+function Segmented<T extends string | number>({
   title,
   options,
   value,
@@ -23,7 +26,7 @@ function Segmented<T extends string>({
       <Row gap="sm" style={{ flexWrap: 'wrap' }}>
         {options.map((o) => (
           <Button
-            key={o.value}
+            key={String(o.value)}
             label={o.label}
             variant="secondary"
             selected={o.value === value}
@@ -37,17 +40,26 @@ function Segmented<T extends string>({
   );
 }
 
+const FORMAT_SAMPLES: Record<NumberFormatId, string> = {
+  en: '1,234.56',
+  eu: '1.234,56',
+  space: '1 234,56',
+  plain: '1234.56',
+};
+
 export function SettingsScreen({
   settings,
   restartRequired,
   onChange,
   onRestart,
+  onNavigate,
   t,
 }: {
   settings: Settings;
   restartRequired: boolean;
   onChange: <K extends SettingKey>(key: K, value: Settings[K]) => void;
   onRestart: () => void;
+  onNavigate?: (to: 'accounts' | 'categories' | 'trash') => void;
   t: TFunction;
 }) {
   return (
@@ -60,6 +72,26 @@ export function SettingsScreen({
         />
       ) : null}
       <Stack gap="lg">
+        {onNavigate ? (
+          <Card>
+            <Text variant="bodyStrong">{t('settings.manage')}</Text>
+            <Button
+              label={t('accounts.title')}
+              variant="secondary"
+              onPress={() => onNavigate('accounts')}
+            />
+            <Button
+              label={t('categories.title')}
+              variant="secondary"
+              onPress={() => onNavigate('categories')}
+            />
+            <Button
+              label={t('trash.title')}
+              variant="secondary"
+              onPress={() => onNavigate('trash')}
+            />
+          </Card>
+        ) : null}
         <Segmented
           title={t('settings.language')}
           value={settings.locale}
@@ -84,6 +116,24 @@ export function SettingsScreen({
             { value: 'arab', label: t('settings.numeralsArab') },
           ]}
           onSelect={(v) => onChange('numerals', v)}
+        />
+        <Segmented
+          title={t('settings.numberFormat')}
+          value={settings.numberFormat}
+          options={(Object.keys(NUMBER_FORMATS) as NumberFormatId[]).map((id) => ({
+            value: id,
+            label: FORMAT_SAMPLES[id],
+          }))}
+          onSelect={(v) => onChange('numberFormat', v)}
+        />
+        <Segmented
+          title={t('settings.firstDayOfWeek')}
+          value={settings.firstDayOfWeek}
+          options={([6, 0, 1] as Weekday[]).map((d) => ({
+            value: d,
+            label: tDynamic(t, `weekdays.long.${d}`),
+          }))}
+          onSelect={(v) => onChange('firstDayOfWeek', v)}
         />
       </Stack>
     </Screen>

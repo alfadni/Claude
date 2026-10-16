@@ -2,6 +2,8 @@ import type { AppDatabase } from '@/data/database';
 import { migrate, SCHEMA_VERSION } from '@/data/migrations';
 import type { SqlExecutor } from '@/data/sql-executor';
 
+import { deriveKey, hexToBytes } from '../crypto/aead';
+
 /** Port over Keychain / Android Keystore (expo-secure-store on device). */
 export interface SecretStore {
   get(key: string): Promise<string | null>;
@@ -26,7 +28,13 @@ export type OpenDeps = Readonly<{
 }>;
 
 export type OpenResult =
-  | { status: 'ready'; connection: DbConnection; createdKey: boolean }
+  | {
+      status: 'ready';
+      connection: DbConnection;
+      createdKey: boolean;
+      /** HKDF sub-key for attachment files; the raw DB key never leaves this module. */
+      attachmentKey: Uint8Array;
+    }
   /** SQLCipher is not linked (e.g. Expo Go). Never fall back to plaintext. */
   | { status: 'cipher_unavailable' }
   /** Key missing but an encrypted DB exists (device restore, keystore reset). */
@@ -100,5 +108,10 @@ export async function openEncryptedDatabase(deps: OpenDeps): Promise<OpenResult>
       appVersion: SCHEMA_VERSION,
     });
   }
-  return { status: 'ready', connection, createdKey };
+  return {
+    status: 'ready',
+    connection,
+    createdKey,
+    attachmentKey: deriveKey(hexToBytes(keyHex), 'attachments/v1'),
+  };
 }

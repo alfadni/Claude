@@ -107,6 +107,8 @@ describe('openEncryptedDatabase', () => {
     expect(file.key).toBe(key);
     expect(currentVersion(r.connection.sql)).toBe(SCHEMA_VERSION);
     expect(r.connection.sql.all('PRAGMA foreign_keys')).toEqual([{ foreign_keys: 1 }]);
+    expect(r.attachmentKey).toHaveLength(32);
+    expect(toHex(r.attachmentKey)).not.toBe(key); // a derived sub-key, not the DB key
   });
 
   it('next launch: reuses the stored key', async () => {

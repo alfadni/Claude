@@ -41,6 +41,7 @@ export const categories = sqliteTable('categories', {
   isSystem: bool('is_system').default(false),
   isArchived: bool('is_archived').default(false),
   sortOrder: integer('sort_order').notNull().default(0),
+  seedKey: text('seed_key'),
 });
 
 export const payees = sqliteTable('payees', {
@@ -100,6 +101,7 @@ export const transactionSplits = sqliteTable('transaction_splits', {
   amountMinor: integer('amount_minor').notNull(),
   note: text('note'),
   sortOrder: integer('sort_order').notNull().default(0),
+  baseAmountMinor: integer('base_amount_minor').notNull().default(0),
 });
 
 export const attachments = sqliteTable('attachments', {
@@ -183,6 +185,12 @@ export const settings = sqliteTable('settings', {
   updatedAt: integer('updated_at').notNull(),
 });
 
+export const drafts = sqliteTable('drafts', {
+  key: text('key').primaryKey().notNull(),
+  payload: text('payload').notNull(),
+  savedAt: integer('saved_at').notNull(),
+});
+
 export const schema = {
   accounts,
   categories,
@@ -199,6 +207,7 @@ export const schema = {
   fxRates,
   auditLog,
   settings,
+  drafts,
 };
 
 export type Schema = typeof schema;

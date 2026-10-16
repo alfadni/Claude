@@ -22,11 +22,20 @@ export type UnitOfWork = Readonly<{
   audit: (entry: AuditEntry) => void;
 }>;
 
+const ACTIVE = new WeakMap<AppDatabase, UnitOfWork>();
+
 /**
  * The only way to mutate data: runs `fn` in a DB transaction and gives it an
  * audit writer. If `fn` throws, data and audit rows roll back together.
+ *
+ * Re-entrant: a repository call made inside another unit of work joins it
+ * (same transaction, same batch id), so services can compose repository
+ * writes atomically (e.g. onboarding creates an account and advances its step
+ * in one commit).
  */
 export function withUnitOfWork<T>(deps: DataDeps, fn: (uow: UnitOfWork) => T): T {
+  const active = ACTIVE.get(deps.db);
+  if (active) return fn(active);
   return deps.db.transaction((tx) => {
     const batchId = deps.newId();
     const now = deps.now();
@@ -45,6 +54,18 @@ export function withUnitOfWork<T>(deps: DataDeps, fn: (uow: UnitOfWork) => T): T
         .run();
     };
     // drizzle's sync transaction type is a subclass of the db type.
-    return fn({ tx: tx as unknown as AppDatabase, batchId, now, newId: deps.newId, audit });
+    const uow: UnitOfWork = {
+      tx: tx as unknown as AppDatabase,
+      batchId,
+      now,
+      newId: deps.newId,
+      audit,
+    };
+    ACTIVE.set(deps.db, uow);
+    try {
+      return fn(uow);
+    } finally {
+      ACTIVE.delete(deps.db);
+    }
   });
 }

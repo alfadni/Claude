@@ -3,7 +3,7 @@
  * CONTRAST_PAIRS and verified ≥ 4.5:1 (WCAG AA) by tests/node/ui/tokens.test.ts.
  *
  * Income/expense keep the baseline's green/red, but colour is never the only
- * signal: amounts always carry +/− and an icon (spec §9).
+ * signal: amounts always carry a plus/minus sign and an icon (spec §9).
  */
 export type ColorScheme = 'light' | 'dark';
 
