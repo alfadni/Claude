@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 
-import { ErrorState, Screen, Text } from '@/ui';
+import { Button, ErrorState, Screen, Text } from '@/ui';
 
 import type { BootErrorKind } from './boot-store';
 
@@ -9,8 +9,18 @@ import type { BootErrorKind } from './boot-store';
  * nothing was deleted; destructive recovery (reset / restore) arrives with
  * Phase 2 and always requires explicit confirmation.
  */
-export function BootErrorScreen({ kind, onRetry }: { kind: BootErrorKind; onRetry: () => void }) {
+export function BootErrorScreen({
+  kind,
+  onRetry,
+  onReset,
+}: {
+  kind: BootErrorKind;
+  onRetry: () => void;
+  /** Offered when the data can't be unlocked: reset, then restore from a backup. */
+  onReset?: () => void;
+}) {
   const { t } = useTranslation();
+  const canReset = onReset && (kind === 'key_lost' || kind === 'undecryptable');
   return (
     <Screen>
       <Text variant="display" accessibilityRole="header">
@@ -21,6 +31,14 @@ export function BootErrorScreen({ kind, onRetry }: { kind: BootErrorKind; onRetr
         body={t(`boot.${kind}.body`)}
         action={{ label: t('common.retry'), onPress: onRetry }}
       />
+      {canReset ? (
+        <Button
+          label={t('lock.resetAndRestore')}
+          variant="danger"
+          onPress={onReset}
+          testID="boot-reset"
+        />
+      ) : null}
     </Screen>
   );
 }

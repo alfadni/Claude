@@ -1,0 +1,37 @@
+# J8: set a PIN, background past the timeout, wrong PINs → cool-down, correct PIN unlocks.
+appId: app.masroof
+---
+- runFlow: flows/_onboard-skip.yaml
+- tapOn: 'Settings'
+- tapOn:
+    id: nav-security
+- tapOn:
+    id: set-pin
+- tapOn: '2'
+- tapOn: '5'
+- tapOn: '8'
+- tapOn: '0'
+- tapOn:
+    id: pin-continue
+- tapOn: '2'
+- tapOn: '5'
+- tapOn: '8'
+- tapOn: '0'
+- tapOn:
+    id: pin-continue
+- tapOn: 'Immediately'
+- pressKey: Home
+- launchApp
+- assertVisible:
+    id: lock-screen
+- repeat:
+    times: 5
+    commands:
+      - tapOn: '1'
+      - tapOn: '1'
+      - tapOn: '1'
+      - tapOn: '1'
+      - tapOn:
+          id: lock-submit
+- assertVisible:
+    id: lock-cooldown

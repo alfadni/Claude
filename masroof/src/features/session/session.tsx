@@ -4,7 +4,19 @@ import type { Repositories } from '@/data/repositories';
 import type { SettingKey, Settings } from '@/domain/settings';
 import type { AttachmentService } from '@/services/attachments/attachment-service';
 import type { PickResult } from '@/services/attachments/expo-ports';
+import type { BackupService } from '@/services/backup/backup-service';
+import type { CsvImporter } from '@/services/csv/import';
 import type { OnboardingService } from '@/services/onboarding/onboarding-service';
+import type { PickedFile } from '@/services/platform/expo-data-io';
+import type { ResetResult } from '@/services/reset/reset-service';
+import type { LockService } from '@/services/security/lock-service';
+
+export type SecurityState = Readonly<{
+  pinSet: boolean;
+  biometricsEnabled: boolean;
+  biometricsAvailable: boolean;
+  compromised: boolean;
+}>;
 
 /** Everything a screen needs, injected so screens are testable with an in-memory ledger. */
 export type Session = Readonly<{
@@ -20,6 +32,17 @@ export type Session = Readonly<{
   version: number;
   bump: () => void;
   updateSetting: <K extends SettingKey>(key: K, value: Settings[K]) => void;
+  lock: LockService;
+  security: SecurityState;
+  refreshSecurity: () => Promise<void>;
+  backup: BackupService;
+  csv: CsvImporter;
+  reset: (typed: string) => Promise<ResetResult>;
+  /** Plain-text CSV of all transactions (the UI warns before sharing it). */
+  exportCsv: (categoryName: (c: { name: string; seedKey: string | null }) => string) => string;
+  shareBytes: (fileName: string, bytes: Uint8Array | string, mimeType: string) => Promise<void>;
+  pickFile: (mimeTypes: string[]) => Promise<PickedFile | null>;
+  reloadApp: () => void;
 }>;
 
 const SessionContext = createContext<Session | null>(null);

@@ -16,6 +16,8 @@ appId: app.masroof
     id: currency-continue
 - tapOn:
     id: onboarding-start
+- tapOn:
+    id: security-skip
 - assertVisible: 'لا توجد معاملات بعد'
 # J1 negative: killed mid-onboarding resumes at the next step.
 - launchApp:

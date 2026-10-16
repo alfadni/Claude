@@ -7,6 +7,7 @@ import { useBootStore } from '@/features/boot/boot-store';
 import type { OpenDeps, SecretStore } from '@/services/db/open-database';
 import type { Platform } from '@/services/platform/expo-platform';
 
+import { FakeVault, MemorySecrets } from '../helpers/security';
 import { betterSqliteExecutor, seededBytes } from '../helpers/sqlite';
 
 jest.mock('@/services/db/expo-connection', () => ({ expoOpenDeps: {} }));
@@ -39,6 +40,20 @@ const platform: Platform = {
   randomBytes: (n) => new Uint8Array(n).map((_, i) => (i * 31 + 7) % 256),
   openSystemSettings: () => undefined,
   haptic: () => undefined,
+  secrets: new MemorySecrets(),
+  vault: () => new FakeVault(),
+  isDeviceCompromised: async () => false,
+  shareBytes: async () => undefined,
+  pickFile: async () => null,
+  openScratch: () => betterSqliteExecutor(new Database(':memory:')),
+  resetPorts: () => ({
+    closeDatabase: () => undefined,
+    deleteDatabaseFile: () => undefined,
+    deleteAppFiles: () => undefined,
+    deleteDatabaseKey: async () => undefined,
+  }),
+  reloadApp: () => undefined,
+  appVersion: 'test',
 };
 
 function plainDeps(raw = new Database(':memory:'), secrets = memorySecrets()): OpenDeps {
@@ -105,6 +120,8 @@ describe('boot store', () => {
       'bump',
       'i18n',
       'kind',
+      'refreshSecurity',
+      'resetWithoutDatabase',
       'status',
       'updateSetting',
     ]);

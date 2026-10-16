@@ -4,12 +4,24 @@ import { I18nextProvider } from 'react-i18next';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { Locale } from '@/domain/settings';
-import { SessionProvider, type Session } from '@/features/session/session';
+import { SessionProvider, type Session, type SecurityState } from '@/features/session/session';
 import { createI18n } from '@/i18n';
 import { createAttachmentService, type AddResult } from '@/services/attachments/attachment-service';
 import type { PickResult } from '@/services/attachments/expo-ports';
 import { deriveKey } from '@/services/crypto/aead';
+import Database from 'better-sqlite3';
+
+import { createBackupService } from '@/services/backup/backup-service';
+import { exportTransactionsCsv } from '@/services/csv/export';
+import { createCsvImporter } from '@/services/csv/import';
 import { createOnboardingService } from '@/services/onboarding/onboarding-service';
+import type { PickedFile } from '@/services/platform/expo-data-io';
+import type { ResetResult } from '@/services/reset/reset-service';
+import { createLockService } from '@/services/security/lock-service';
+
+import { FakeVault, MemorySecrets, rnd, TEST_KDF } from '../helpers/security';
+import { betterSqliteExecutor } from '../helpers/sqlite';
+import { MemoryFiles } from '../helpers/backup';
 import { ThemeProvider } from '@/ui';
 
 import { createLedger, type Ledger } from '../helpers/ledger';
@@ -22,6 +34,13 @@ const metrics = {
 export type TestSession = {
   ledger: Ledger;
   session: Session;
+  vault: FakeVault;
+  secrets: MemorySecrets;
+  security: { current: SecurityState };
+  share: jest.Mock<Promise<void>, [string, Uint8Array | string, string]>;
+  pickFileMock: jest.Mock<Promise<PickedFile | null>, [string[]]>;
+  resetMock: jest.Mock<Promise<ResetResult>, [string]>;
+  reload: jest.Mock;
   pick: jest.Mock<Promise<PickResult>, ['library' | 'camera']>;
   openSettings: jest.Mock;
   bumps: () => number;
@@ -64,6 +83,30 @@ export function createTestSession(options: { locale?: Locale; ledger?: Ledger } 
       return real.add(txId, uri);
     },
   };
+  const secrets = new MemorySecrets();
+  const vault = new FakeVault();
+  const lock = createLockService({
+    secrets,
+    vault,
+    randomBytes: rnd,
+    now: () => ledger.clock.now,
+    kdf: TEST_KDF,
+  });
+  const security = {
+    current: {
+      pinSet: false,
+      biometricsEnabled: false,
+      biometricsAvailable: true,
+      compromised: false,
+    } as SecurityState,
+  };
+  const share = jest.fn<Promise<void>, [string, Uint8Array | string, string]>(
+    async () => undefined,
+  );
+  const pickFileMock = jest.fn<Promise<PickedFile | null>, [string[]]>(async () => null);
+  const resetMock = jest.fn<Promise<ResetResult>, [string]>(async () => 'done');
+  const reload = jest.fn();
+  const backupFiles = new MemoryFiles();
   const holder: { session: Session } = {} as { session: Session };
   const session: Session = {
     repos: ledger.repos,
@@ -86,9 +129,54 @@ export function createTestSession(options: { locale?: Locale; ledger?: Ledger } 
       ledger.repos.settings.set(k, v);
       bumpCount++;
     },
+    lock,
+    get security() {
+      return security.current;
+    },
+    refreshSecurity: async () => {
+      const s = await lock.status();
+      security.current = {
+        ...security.current,
+        pinSet: s.pinSet,
+        biometricsEnabled: s.biometricsEnabled,
+        biometricsAvailable: s.biometricsAvailable,
+      };
+      bumpCount++;
+    },
+    backup: createBackupService({
+      sql: ledger.sql,
+      attachments: ledger.repos.attachments,
+      files: backupFiles,
+      attachmentKey: deriveKey(new Uint8Array(32).fill(9), 'attachments/v1'),
+      randomBytes: rnd,
+      now: () => ledger.clock.now,
+      appVersion: 'test',
+      openScratch: () => betterSqliteExecutor(new Database(':memory:')),
+      kdf: TEST_KDF,
+    }),
+    csv: createCsvImporter({ ...ledger, repos: ledger.repos }),
+    reset: resetMock,
+    exportCsv: (name) => exportTransactionsCsv(ledger.sql, name),
+    shareBytes: share,
+    pickFile: pickFileMock,
+    reloadApp: reload,
   };
   holder.session = session;
-  return { ledger, session, pick, openSettings, bumps: () => bumpCount, addResult };
+  return {
+    ledger,
+    session,
+    pick,
+    openSettings,
+    bumps: () => bumpCount,
+    addResult,
+    vault,
+    secrets,
+    security,
+    share,
+    pickFileMock,
+    resetMock,
+    reload,
+  };
 }
 
 export async function renderWithSession(ui: ReactElement, ts: TestSession, locale: Locale = 'en') {

@@ -52,3 +52,32 @@ Every journey path from spec section 8 that is in scope so far, and the automate
 | ✅ Delete → undo snackbar → exact restore (splits, tags, attachments)      | node `ledger-journeys.test.ts` "restores exactly", "does not resurrect splits replaced by an earlier edit"; ui `screens.test.tsx` "Undo restores exactly", `undo.test.tsx` 5 s window; e2e `j7-delete-undo.yaml` |
 | ❌ Undo missed → Trash for 30 days                                         | node "in Trash for 30 days, then purged with its files and history"; ui `screens.test.tsx` Trash; e2e                                                                                                            |
 | ❌ Editing a recurring-generated transaction → this only / this and future | node "requires a scope; this and future updates the rule"; ui "recurring-generated: asks…"                                                                                                                       |
+
+## J8 App lock
+
+| Path                                                                           | Tests                                                                                                                                                                                  |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ✅ Return after timeout → Face ID → unlocked                                   | node `lock-policy.test.ts` auto-lock, `lock-service.test.ts` "Face ID unlocks"; ui `phase2.test.tsx` "biometrics: prompted on open", "locks after the timeout"; e2e `j8-app-lock.yaml` |
+| ❌ 5 wrong PINs → escalating cool-down; no wipe                                | node `lock-policy.test.ts`, `lock-service.test.ts` "5 wrong PINs…", "clock moved backwards"; ui "5 wrong PINs → cool-down banner"; e2e                                                 |
+| ❌ Biometrics changed at OS level → biometric unlock invalidated, PIN required | node "biometrics changed at OS level", "tampered biometric item"; ui "biometrics changed at OS level"                                                                                  |
+| ❌ Forgot PIN, no biometrics → reset & restore path, clearly warned            | node "without biometrics: no way around the PIN"; ui "forgot PIN without biometrics"; also "forgot PIN with biometrics"                                                                |
+
+## J9 Backup / restore / export
+
+| Path                                                                                                     | Tests                                                                                                                                                            |
+| -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ✅ Backup → share → restore on a new phone → identical data and attachments (row counts + checksums)     | node `backup.test.ts` "restores identical data and attachments"; ui `phase2.test.tsx` "creates an encrypted backup, shares it"; e2e `j9-backup-restore.yaml`     |
+| ❌ Wrong passphrase → clear error, no partial restore                                                    | node; ui "wrong passphrase → clear error"                                                                                                                        |
+| ❌ Corrupted or truncated file → nothing written                                                         | node "a flipped byte", "truncation", "missing end", "trailing junk", "edited header"; ui "a non-backup file is rejected"                                         |
+| ❌ Backup from a newer schema → "update the app"                                                         | node "backup from a newer app schema"                                                                                                                            |
+| ❌ Backup from an older schema → migrated forward (fixture)                                              | node "restores a schema-v1 backup…" using `tests/fixtures/backup-schema-v1.masroof`                                                                              |
+| ❌ Restore over existing data → replace (safety backup first) or cancel                                  | node "requires explicit confirmation; … safety backup", "if the safety backup cannot be written"; ui "restore over existing data asks to replace"                |
+| ❌ CSV import with duplicates / bad dates / unknown categories → preview, mapping, nothing until confirm | node `csv.test.ts` (row errors, mapping, duplicates, round trip, all-or-nothing); ui "import: preview with counts and errors, map unknown category, then commit" |
+| (security) Crafted backups: unknown tables, injected columns, path traversal, FK violations              | node `backup.test.ts` "crafted backups"                                                                                                                          |
+
+## J11 Reset data
+
+| Path                                                                         | Tests                                                                                                                     |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| ✅ Offers backup first, requires typing RESET, wipes DB + attachments + keys | node `reset.test.ts` "wipes database, files and keys, in a safe order"; ui `phase2.test.tsx` J11; e2e `j11-reset.yaml`    |
+| ❌ Cancel at any step → nothing changed                                      | node "anything else changes nothing", "keys are kept"; ui "cancel changes nothing", "a failed reset says nothing changed" |

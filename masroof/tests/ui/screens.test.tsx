@@ -220,6 +220,53 @@ describe('Transactions list', () => {
 });
 
 describe('Onboarding (J1)', () => {
+  it('security step: set PIN + biometrics; biometrics hidden when unavailable', async () => {
+    const ts = fresh();
+    ts.session.onboarding.chooseLanguage('en');
+    ts.session.onboarding.chooseCurrency('USD');
+    ts.session.onboarding.createFirstAccount('Cash');
+    const onFinished = jest.fn();
+    const utils = await renderWithSession(
+      <OnboardingScreen device={device} onLanguageChosen={jest.fn()} onFinished={onFinished} />,
+      ts,
+    );
+    for (const pass of [0, 1]) {
+      for (const d of ['2', '5', '8', '0'])
+        await fireEvent.press(screen.getByRole('button', { name: d }));
+      await fireEvent.press(screen.getByTestId('pin-continue'));
+      void pass;
+    }
+    await utils.refresh();
+    expect(ts.security.current.pinSet).toBe(true);
+    await fireEvent.press(screen.getByTestId('onboarding-biometrics'));
+    expect(ts.security.current.biometricsEnabled).toBe(true);
+    await fireEvent.press(screen.getByTestId('onboarding-finish'));
+    expect(onFinished).toHaveBeenCalled();
+    expect(await ts.session.lock.verifyPin('2580')).toEqual({ status: 'ok' });
+
+    // Biometrics unavailable: the option is hidden, PIN still offered.
+    const ts2 = fresh();
+    ts2.security.current = { ...ts2.security.current, biometricsAvailable: false };
+    ts2.session.onboarding.chooseLanguage('en');
+    ts2.session.onboarding.chooseCurrency('USD');
+    ts2.session.onboarding.createFirstAccount('Cash');
+    const u2 = await renderWithSession(
+      <OnboardingScreen device={device} onLanguageChosen={jest.fn()} onFinished={jest.fn()} />,
+      ts2,
+    );
+    expect(screen.getByTestId('pin-setup')).toBeOnTheScreen();
+    for (const pass of [0, 1]) {
+      for (const d of ['2', '5', '8', '0'])
+        await fireEvent.press(screen.getByRole('button', { name: d }));
+      await fireEvent.press(screen.getByTestId('pin-continue'));
+      void pass;
+    }
+    ts2.vault.available = false;
+    await ts2.session.refreshSecurity();
+    await u2.refresh();
+    expect(screen.queryByTestId('onboarding-biometrics')).toBeNull();
+  });
+
   function fresh() {
     const t = createTestDb();
     const repos = createRepositories({ ...t, timeZone: () => 'Africa/Khartoum' });
@@ -251,6 +298,9 @@ describe('Onboarding (J1)', () => {
     await utils.refresh();
     expect(screen.getByTestId('onboarding-account')).toBeOnTheScreen();
     await fireEvent.press(screen.getByTestId('onboarding-start'));
+    await utils.refresh();
+    expect(screen.getByTestId('onboarding-security')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('security-skip'));
     expect(onFinished).toHaveBeenCalled();
     expect(ts.session.repos.accounts.list()).toMatchObject([{ name: 'Cash', currency: 'SDG' }]);
     expect(ts.session.onboarding.screen()).toBe('done');

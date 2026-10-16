@@ -27,6 +27,8 @@ import {
   useTheme,
 } from '@/ui';
 
+import { backupOverdue } from '@/domain/settings';
+
 import { useLedger, useSession } from '../session/session';
 import { useFormat } from '../session/use-format';
 import { MonthCalendar } from './month-calendar';
@@ -34,6 +36,7 @@ import { MonthCalendar } from './month-calendar';
 type Tab = 'income' | 'balance' | 'expense';
 
 export type HomeNav = Readonly<{
+  onBackup?: () => void;
   onAdd: (date?: LocalDate) => void;
   onDay: (date: LocalDate) => void;
   onCategory: (categoryId: string, period: Period) => void;
@@ -50,6 +53,7 @@ export function HomeScreen({ nav }: { nav: HomeNav }) {
   const today = repos.today();
   const [month, setMonth] = useState<Period>(() => monthOf(today));
   const [tab, setTab] = useState<Tab>('expense');
+  const [openedAt] = useState(() => Date.now());
   const currency = settings.baseCurrency;
 
   const hasAny = useLedger((r) => r.reports.hasAnyTransactions(), []);
@@ -115,6 +119,14 @@ export function HomeScreen({ nav }: { nav: HomeNav }) {
           />
         </Card>
 
+        {nav.onBackup && backupOverdue(settings.lastBackupAt, openedAt, hasAny) ? (
+          <Banner
+            tone="warning"
+            message={t('backup.reminder')}
+            action={{ label: t('security.makeBackup'), onPress: nav.onBackup }}
+            testID="backup-reminder"
+          />
+        ) : null}
         {!hasAny ? (
           <EmptyState
             title={t('home.emptyTitle')}

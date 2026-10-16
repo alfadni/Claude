@@ -22,8 +22,18 @@ export function SessionHost({ children }: { children: ReactNode }) {
       version: ready.version,
       bump: state.bump,
       updateSetting: state.updateSetting,
+      lock: services.lock,
+      security: ready.security,
+      refreshSecurity: state.refreshSecurity,
+      backup: services.backup,
+      csv: services.csv,
+      reset: services.reset,
+      exportCsv: services.exportCsv,
+      shareBytes: services.platform.shareBytes,
+      pickFile: services.platform.pickFile,
+      reloadApp: services.platform.reloadApp,
     };
-  }, [ready, state.bump, state.updateSetting]);
+  }, [ready, state.bump, state.updateSetting, state.refreshSecurity]);
   if (!value) return null;
   return <SessionProvider value={value}>{children}</SessionProvider>;
 }

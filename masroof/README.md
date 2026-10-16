@@ -2,7 +2,7 @@
 
 Offline-first personal expense and income tracker for iOS and Android. Data never leaves the device: it is stored in an SQLCipher-encrypted database whose key lives in the Keychain / Android Keystore.
 
-> Status: **Phase 1 — Core ledger** complete (on top of Phase 0 foundations). See [`docs/ADR`](docs/ADR) for decisions, [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) for choices awaiting your confirmation, and [`docs/JOURNEY_COVERAGE.md`](docs/JOURNEY_COVERAGE.md) for which test covers which journey path.
+> Status: **Phase 2 — Security & data safety** complete (on top of Phases 0–1). See [`docs/ADR`](docs/ADR) for decisions, [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) for choices awaiting your confirmation, and [`docs/JOURNEY_COVERAGE.md`](docs/JOURNEY_COVERAGE.md) for which test covers which journey path.
 
 ## What works today
 
@@ -13,6 +13,10 @@ Offline-first personal expense and income tracker for iOS and Android. Data neve
 - **Transactions list**: search (note, payee, amount), filters (date, type, account, category, tag), grouping by day or category, pagination.
 - **Edit / delete / undo** (J7): 5-second undo snackbar, 30-day Trash, edit scope prompt for recurring-generated transactions.
 - **Accounts** (cash, bank, mobile wallet, card, savings, other; archive, include-in-totals, currency locked once used) and **categories** (add, rename, reorder, archive; never hard-deleted).
+- **App lock** (J8): PIN (Argon2id) and Face ID / fingerprint. Locks on start and after a timeout. Escalating cool-downs, never a wipe. A biometric change forces the PIN. Privacy cover in the app switcher.
+- **Encrypted backup & restore** (J9): `.masroof` files (Argon2id + AES-256-GCM), shared via the OS share sheet. Restore shows a preview, verifies everything before writing, migrates old backups forward, and saves a safety backup before replacing data.
+- **CSV export & import**: export carries a plain-text warning and a formula-injection guard. Import shows a preview with row-level errors, category mapping and duplicate skipping, and commits all-or-nothing.
+- **Reset** (J11): offers a backup first, requires typing `RESET`, and wipes in a safe order.
 
 ## Requirements
 
@@ -67,4 +71,4 @@ Layering is `ui → features → services → domain ← data`, enforced by ESLi
 
 ## Journey coverage
 
-See [`docs/JOURNEY_COVERAGE.md`](docs/JOURNEY_COVERAGE.md). Phase 1 covers J1, J2, J3, J4 and J7. Two items are deferred, each with a reason: PIN/biometrics in onboarding (Phase 2) and budget alerts (Phase 3).
+See [`docs/JOURNEY_COVERAGE.md`](docs/JOURNEY_COVERAGE.md). Phases 1–2 cover J1, J2, J3, J4, J7, J8, J9 and J11. Budget alerts (J2) are deferred to Phase 3.

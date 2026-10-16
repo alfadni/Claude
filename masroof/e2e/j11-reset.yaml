@@ -1,0 +1,23 @@
+# J11: reset requires typing RESET; cancel changes nothing; reset returns to onboarding.
+appId: app.masroof
+---
+- runFlow: flows/_onboard-skip.yaml
+- tapOn: 'Settings'
+- tapOn:
+    id: nav-reset
+- assertVisible:
+    id: reset-confirm
+    enabled: false
+- tapOn:
+    id: reset-cancel
+- tapOn:
+    id: nav-reset
+- tapOn:
+    id: reset-input
+- inputText: 'RESET'
+- tapOn:
+    id: reset-confirm
+- extendedWaitUntil:
+    visible:
+      id: onboarding-language
+    timeout: 20000
