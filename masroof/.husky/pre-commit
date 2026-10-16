@@ -1,0 +1,4 @@
+# Only the masroof app has hooks; skip when no masroof files are staged.
+if git diff --cached --name-only | grep -q '^masroof/'; then
+  cd masroof && pnpm exec lint-staged && pnpm typecheck
+fi

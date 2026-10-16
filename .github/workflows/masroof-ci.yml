@@ -1,0 +1,41 @@
+name: masroof-ci
+
+on:
+  push:
+    paths: ["masroof/**", ".github/workflows/masroof-ci.yml"]
+  pull_request:
+    paths: ["masroof/**", ".github/workflows/masroof-ci.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: masroof-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: masroof
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: masroof/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: masroof/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm test:coverage
+      - name: Bundle (Metro, Hermes)
+        run: pnpm exec expo export --platform android --output-dir ../dist-ci
+        env:
+          EXPO_OFFLINE: "1"
