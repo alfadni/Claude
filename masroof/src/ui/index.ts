@@ -15,3 +15,4 @@ export * from './components/snackbar';
 export * from './components/list-row';
 export * from './components/pin-pad';
 export * from './components/progress-bar';
+export * from './components/charts';

@@ -4,10 +4,19 @@ import type { DataDeps } from '../database';
 import { fxRates } from '../schema';
 import { withUnitOfWork } from '../unit-of-work';
 
+export type FxRateRow = Readonly<{
+  id: string;
+  base: CurrencyCode;
+  quote: CurrencyCode;
+  rate: DecimalRate;
+  asOf: LocalDate;
+  updatedAt: number;
+}>;
+
 /**
  * Manual FX rates (source 'manual' in v1). A row means 1 `base` = `rate` `quote`.
- * Phase 1 records the rate the user typed (or a transfer implied) so the next
- * entry in that currency is prefilled; the full FX table UI is Phase 4.
+ * Rates the user typed (or a transfer implied) are recorded so the next entry
+ * is prefilled; Settings → Exchange rates manages them (ADR-015).
  */
 export function createFxRatesRepository(deps: DataDeps) {
   return {
@@ -48,6 +57,32 @@ export function createFxRatesRepository(deps: DataDeps) {
         tx.insert(fxRates).values(row).run();
         audit({ entity: 'fx_rates', entityId: row.id, action: 'create', after: row });
       });
+    },
+
+    /** Live rates, newest day first. */
+    list(): FxRateRow[] {
+      return deps.sql.all<FxRateRow>(
+        `SELECT id, base, quote, rate, as_of AS asOf, updated_at AS updatedAt FROM fx_rates
+         WHERE deleted_at IS NULL ORDER BY as_of DESC, base, quote`,
+      );
+    },
+
+    /** Soft delete. Transactions keep their frozen rate, so history never changes. */
+    remove(id: string): boolean {
+      const row = deps.sql.all<{ id: string }>(
+        'SELECT id FROM fx_rates WHERE id = ? AND deleted_at IS NULL',
+        [id],
+      )[0];
+      if (!row) return false;
+      withUnitOfWork(deps, ({ now, audit }) => {
+        deps.sql.run('UPDATE fx_rates SET deleted_at = ?, updated_at = ? WHERE id = ?', [
+          now,
+          now,
+          id,
+        ]);
+        audit({ entity: 'fx_rates', entityId: id, action: 'delete' });
+      });
+      return true;
     },
 
     /** Most recent known rate from → to on or before `asOf`, direct or inverted. */

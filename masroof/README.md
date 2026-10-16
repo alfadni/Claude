@@ -2,7 +2,7 @@
 
 Offline-first personal expense and income tracker for iOS and Android. Data never leaves the device: it is stored in an SQLCipher-encrypted database whose key lives in the Keychain / Android Keystore.
 
-> Status: **Phase 3 — Planning** complete (on top of Phases 0–2). See [`docs/ADR`](docs/ADR) for decisions, [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) for choices awaiting your confirmation, and [`docs/JOURNEY_COVERAGE.md`](docs/JOURNEY_COVERAGE.md) for which test covers which journey path.
+> Status: **Phase 4 — Multi-currency & insights** complete (on top of Phases 0–3). See [`docs/ADR`](docs/ADR) for decisions, [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) for choices awaiting your confirmation, and [`docs/JOURNEY_COVERAGE.md`](docs/JOURNEY_COVERAGE.md) for which test covers which journey path.
 
 ## What works today
 
@@ -28,6 +28,8 @@ Offline-first personal expense and income tracker for iOS and Android. Data neve
   - "Safe to spend today", and a Home health strip (✓ / ⚠ / ⛔ plus text, never colour alone).
   - Category merge moves budgets, splits and rules; if both categories have a budget, it asks first.
 - **Goals**: target, optional date and linked account; progress and the monthly amount needed.
+- **Exchange rates & main currency** (J10, ADR-015): a manual FX table (add, edit, delete). Changing the main currency lists every rate it needs (prefilled from the table), previews this month's totals before and after, and recomputes every frozen base amount and budget in one transaction. Original amounts and currencies never change, and it is blocked until every rate is given.
+- **Reports** (ADR-016): income vs expense, 12-month trend, spending by category, month-over-month change per category, top payees and goal progress. Charts are accessible native bars (no chart library); each bar is read aloud.
 - **Local notifications**: asked in context (first rule or budget), never at launch. They never contain amounts. With permission denied, everything still works in-app.
 
 ## Requirements
@@ -64,7 +66,7 @@ src/ui/         tokens, theme, RTL-safe primitives, AmountText, empty/loading/er
 src/i18n/       en / ar resources, locale resolution, layout direction
 tests/node      domain + data + services + i18n (Node, better-sqlite3)
 tests/ui        screens against an in-memory ledger (jest-expo + Testing Library)
-e2e/            Maestro journey flows (j1–j9, j11)
+e2e/            Maestro journey flows (j1–j11)
 ```
 
 Layering is `ui → features → services → domain ← data`, enforced by ESLint `no-restricted-imports`.
@@ -83,4 +85,4 @@ Layering is `ui → features → services → domain ← data`, enforced by ESLi
 
 ## Journey coverage
 
-See [`docs/JOURNEY_COVERAGE.md`](docs/JOURNEY_COVERAGE.md). Phases 1–3 cover J1–J9 and J11. J10 (base-currency change) arrives in Phase 4.
+See [`docs/JOURNEY_COVERAGE.md`](docs/JOURNEY_COVERAGE.md). Phases 1–4 cover every journey, J1–J11.

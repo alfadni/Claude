@@ -45,6 +45,9 @@ describe('translations', () => {
       'amount.neutral',
       'dates.monthYear',
       'dates.dayMonthYear',
+      // Formulas: 1 EUR = 1.1 USD
+      'fx.rateLine',
+      'baseCurrency.rateFor',
     ]);
     for (const key of Object.keys(flatEn)) {
       if (allowedSame.has(key)) continue;

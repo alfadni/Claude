@@ -71,7 +71,10 @@ export function SettingsScreen({
       | 'upcoming'
       | 'recurring'
       | 'budgets'
-      | 'goals',
+      | 'goals'
+      | 'reports'
+      | 'fx'
+      | 'currency',
   ) => void;
   t: TFunction;
 }) {
@@ -131,6 +134,29 @@ export function SettingsScreen({
               variant="secondary"
               onPress={() => onNavigate('goals')}
               testID="nav-goals"
+            />
+            <Button
+              label={t('settings.reports')}
+              variant="secondary"
+              onPress={() => onNavigate('reports')}
+              testID="nav-reports"
+            />
+          </Card>
+        ) : null}
+        {onNavigate ? (
+          <Card>
+            <Text variant="bodyStrong">{t('settings.currency')}</Text>
+            <Button
+              label={t('settings.currency')}
+              variant="secondary"
+              onPress={() => onNavigate('currency')}
+              testID="nav-currency"
+            />
+            <Button
+              label={t('settings.fx')}
+              variant="secondary"
+              onPress={() => onNavigate('fx')}
+              testID="nav-fx"
             />
           </Card>
         ) : null}
