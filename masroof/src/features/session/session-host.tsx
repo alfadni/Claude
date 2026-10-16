@@ -37,6 +37,7 @@ export function SessionHost({ children }: { children: ReactNode }) {
       planningNotice: ready.planning.notice,
       dismissPlanningNotice: state.dismissPlanningNotice,
       requestNotifications: state.requestNotifications,
+      crashReportsAvailable: services.platform.crashReporter.available,
     };
   }, [
     ready,

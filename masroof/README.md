@@ -2,7 +2,7 @@
 
 Offline-first personal expense and income tracker for iOS and Android. Data never leaves the device: it is stored in an SQLCipher-encrypted database whose key lives in the Keychain / Android Keystore.
 
-> Status: **Phase 4 — Multi-currency & insights** complete (on top of Phases 0–3). See [`docs/ADR`](docs/ADR) for decisions, [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) for choices awaiting your confirmation, and [`docs/JOURNEY_COVERAGE.md`](docs/JOURNEY_COVERAGE.md) for which test covers which journey path.
+> Status: **Phase 5 — Hardening** complete: all spec phases (0–5) are built. Remaining release work (device runs, screenshots, legal review) is listed in `docs/OPEN_QUESTIONS.md` Q45–Q48. See [`docs/ADR`](docs/ADR) for decisions, [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) for choices awaiting your confirmation, and [`docs/JOURNEY_COVERAGE.md`](docs/JOURNEY_COVERAGE.md) for which test covers which journey path.
 
 ## What works today
 
@@ -30,6 +30,13 @@ Offline-first personal expense and income tracker for iOS and Android. Data neve
 - **Goals**: target, optional date and linked account; progress and the monthly amount needed.
 - **Exchange rates & main currency** (J10, ADR-015): a manual FX table (add, edit, delete). Changing the main currency lists every rate it needs (prefilled from the table), previews this month's totals before and after, and recomputes every frozen base amount and budget in one transaction. Original amounts and currencies never change, and it is blocked until every rate is given.
 - **Reports** (ADR-016): income vs expense, 12-month trend, spending by category, month-over-month change per category, top payees and goal progress. Charts are accessible native bars (no chart library); each bar is read aloud.
+- **Privacy & hardening** (ADR-017):
+  - Release builds have no Android `INTERNET` permission.
+  - Crash reports are off by default, and exist only in builds with a DSN. When on, an allow-list scrubber sends stack frames only.
+  - There is a Privacy screen and a privacy policy (`docs/PRIVACY.md`).
+  - Performance is gated on a 73k-row ledger (`docs/PERFORMANCE.md`).
+  - An automated accessibility audit covers every screen in EN/AR (`docs/ACCESSIBILITY.md`).
+  - Store listing drafts are in `store/`.
 - **Local notifications**: asked in context (first rule or budget), never at launch. They never contain amounts. With permission denied, everything still works in-app.
 
 ## Requirements
@@ -47,12 +54,12 @@ pnpm start                # Metro only, for an already-installed dev client
 pnpm lint                 # ESLint (incl. RTL, no-float-money, layering, no-console rules)
 pnpm format:check
 pnpm typecheck
-pnpm test                 # Jest: node project (real SQLite) + ui project (RNTL)
+pnpm test                 # Jest: node (real SQLite) + perf (73k-row ledger) + ui (RNTL)
 pnpm test:coverage        # enforces ≥ 90% on src/domain
 pnpm e2e                  # Maestro flows in e2e/ (needs a running dev/release build)
 ```
 
-Release builds: `npx eas-cli@latest build` (EAS config arrives in Phase 5).
+Release builds: `npx eas-cli@latest build --profile production` (`eas.json`). Production and preview set `MASROOF_RELEASE=1`, which removes the Android `INTERNET` permission. To ship opt-in crash reports, also set `EXPO_PUBLIC_SENTRY_DSN` (ADR-017).
 
 ## Architecture
 

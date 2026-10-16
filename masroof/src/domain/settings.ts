@@ -20,6 +20,8 @@ export type Settings = {
   lastAccountId: string | null;
   /** Epoch ms of the last encrypted backup, for backup reminders (spec 5.14). */
   lastBackupAt: number | null;
+  /** Opt-in, scrubbed crash reports (ADR-017). Off by default, never turned on for the user. */
+  crashReports: boolean;
 };
 
 export type SettingKey = keyof Settings;
@@ -35,6 +37,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   onboardingStep: 'none',
   lastAccountId: null,
   lastBackupAt: null,
+  crashReports: false,
 });
 
 const oneOf =
@@ -64,6 +67,7 @@ export const SETTING_VALIDATORS: { [K in SettingKey]: (v: unknown) => v is Setti
     v === null || (typeof v === 'string' && v.length > 0 && v.length <= 64),
   lastBackupAt: (v): v is number | null =>
     v === null || (typeof v === 'number' && Number.isSafeInteger(v) && v > 0),
+  crashReports: (v): v is boolean => typeof v === 'boolean',
 };
 
 /** Remind after 30 days without a backup (or never), once there is data to lose. */

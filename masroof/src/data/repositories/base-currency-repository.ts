@@ -1,4 +1,5 @@
 import {
+  allocate,
   computeBaseAmounts,
   parseTemplate,
   convert,
@@ -65,8 +66,6 @@ type Plan = {
   tx: { id: string; rate: DecimalRate; baseMinor: number }[];
   splits: { id: string; baseMinor: number }[];
   budgets: { id: string; amountMinor: number }[];
-  /** New base per transaction id (for the preview totals). */
-  baseById: Map<string, number>;
 };
 
 /**
@@ -82,11 +81,13 @@ export function createBaseCurrencyRepository(
     reports: ReportsRepository;
   },
 ) {
-  const transactions = () =>
+  /** Rows to recompute: everything, or one date range (the preview). */
+  const transactions = (range?: { from: LocalDate; to: LocalDate }) =>
     deps.sql.all<TxRow>(
       `SELECT id, type, status, deleted_at AS deletedAt, amount_minor AS amountMinor, currency,
               to_amount_minor AS toAmountMinor, to_currency AS toCurrency, occurred_on AS occurredOn
-       FROM transactions`,
+       FROM transactions ${range ? 'WHERE occurred_on >= ? AND occurred_on < ?' : ''}`,
+      range ? [range.from, range.to] : [],
     );
   const liveBudgets = () =>
     deps.sql.all<BudgetRow>(
@@ -97,15 +98,26 @@ export function createBaseCurrencyRepository(
   const needsRate = (t: TxRow, to: CurrencyCode) =>
     t.currency !== to && !(t.type === 'transfer' && t.toCurrency === to && t.toAmountMinor);
 
+  /** Grouped in SQL: one pass over the table, no rows copied into JS. */
   function required(to: CurrencyCode): RequiredRate[] {
     const counts = new Map<CurrencyCode, { transactions: number; budgets: number }>();
-    const bump = (c: CurrencyCode, key: 'transactions' | 'budgets') => {
-      const v = counts.get(c) ?? { transactions: 0, budgets: 0 };
-      v[key]++;
-      counts.set(c, v);
-    };
-    for (const t of transactions()) if (needsRate(t, to)) bump(t.currency, 'transactions');
-    for (const b of liveBudgets()) if (b.currency !== to) bump(b.currency, 'budgets');
+    for (const r of deps.sql.all<{ currency: CurrencyCode; n: number }>(
+      `SELECT currency, count(*) AS n FROM transactions
+       WHERE currency <> ? AND NOT (type = 'transfer' AND to_currency = ? AND to_amount_minor IS NOT NULL)
+       GROUP BY currency`,
+      [to, to],
+    )) {
+      counts.set(r.currency, { transactions: r.n, budgets: 0 });
+    }
+    for (const r of deps.sql.all<{ currency: CurrencyCode; n: number }>(
+      'SELECT currency, count(*) AS n FROM budgets WHERE deleted_at IS NULL AND currency <> ? GROUP BY currency',
+      [to],
+    )) {
+      counts.set(r.currency, {
+        transactions: counts.get(r.currency)?.transactions ?? 0,
+        budgets: r.n,
+      });
+    }
     return [...counts.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([currency, c]) => ({
@@ -115,52 +127,55 @@ export function createBaseCurrencyRepository(
       }));
   }
 
-  function plan(to: CurrencyCode, rates: RateMap): Result<Plan, BaseChangeError> {
-    const from = deps.settings.get('baseCurrency');
-    if (from === to) return err({ code: 'same_currency' });
+  function check(to: CurrencyCode, rates: RateMap): BaseChangeError | null {
+    if (deps.settings.get('baseCurrency') === to) return { code: 'same_currency' };
     const missing = required(to)
       .map((r) => r.currency)
       .filter((c) => !rates.get(c));
-    if (missing.length > 0) return err({ code: 'rates_missing', currencies: missing });
+    return missing.length > 0 ? { code: 'rates_missing', currencies: missing } : null;
+  }
 
+  /** New base amount and rate of one transaction, exactly as entry would compute it. */
+  function rebase(t: TxRow, to: CurrencyCode, rates: RateMap) {
+    return computeBaseAmounts({
+      amount: money(t.amountMinor, t.currency),
+      baseCurrency: to,
+      rate: needsRate(t, to) ? (rates.get(t.currency) as DecimalRate) : null,
+      baseLegMinor: t.type === 'transfer' && t.toCurrency === to ? t.toAmountMinor : null,
+      splitAmounts: [],
+    });
+  }
+
+  function plan(to: CurrencyCode, rates: RateMap): Plan {
     const splitsByTx = new Map<string, SplitRow[]>();
     for (const s of deps.sql.all<SplitRow>(
       `SELECT id, transaction_id AS transactionId, amount_minor AS amountMinor, deleted_at AS deletedAt
        FROM transaction_splits ORDER BY transaction_id, sort_order, id`,
     )) {
-      const list = splitsByTx.get(s.transactionId) ?? [];
-      list.push(s);
-      splitsByTx.set(s.transactionId, list);
+      const list = splitsByTx.get(s.transactionId);
+      if (list) list.push(s);
+      else splitsByTx.set(s.transactionId, [s]);
     }
 
-    const out: Plan = { tx: [], splits: [], budgets: [], baseById: new Map() };
+    const out: Plan = { tx: [], splits: [], budgets: [] };
     for (const t of transactions()) {
-      const leg = t.type === 'transfer' && t.toCurrency === to ? t.toAmountMinor : null;
+      const { fxRateToBase, baseAmountMinor } = rebase(t, to, rates);
+      out.tx.push({ id: t.id, rate: fxRateToBase, baseMinor: baseAmountMinor });
       // Splits are re-allocated per generation (live, or replaced by an earlier
       // edit), so each set still sums exactly to the parent's base amount.
       const groups = new Map<number | null, SplitRow[]>();
       for (const s of splitsByTx.get(t.id) ?? []) {
-        groups.set(s.deletedAt, [...(groups.get(s.deletedAt) ?? []), s]);
+        const g = groups.get(s.deletedAt);
+        if (g) g.push(s);
+        else groups.set(s.deletedAt, [s]);
       }
-      const { fxRateToBase: rate, baseAmountMinor: baseMinor } = computeBaseAmounts({
-        amount: money(t.amountMinor, t.currency),
-        baseCurrency: to,
-        rate: needsRate(t, to) ? (rates.get(t.currency) as DecimalRate) : null,
-        baseLegMinor: leg,
-        splitAmounts: [],
-      });
       for (const g of groups.values()) {
-        const { splitBaseMinor } = computeBaseAmounts({
-          amount: money(t.amountMinor, t.currency),
-          baseCurrency: to,
-          rate: needsRate(t, to) ? (rates.get(t.currency) as DecimalRate) : null,
-          baseLegMinor: leg,
-          splitAmounts: g.map((s) => s.amountMinor),
-        });
-        g.forEach((s, i) => out.splits.push({ id: s.id, baseMinor: splitBaseMinor[i] ?? 0 }));
+        const shares = allocate(
+          money(baseAmountMinor, to),
+          g.map((s) => s.amountMinor),
+        );
+        g.forEach((s, i) => out.splits.push({ id: s.id, baseMinor: shares[i]?.amountMinor ?? 0 }));
       }
-      out.tx.push({ id: t.id, rate, baseMinor });
-      out.baseById.set(t.id, baseMinor);
     }
     for (const b of liveBudgets()) {
       if (b.currency === to) continue;
@@ -173,7 +188,7 @@ export function createBaseCurrencyRepository(
         ).amountMinor,
       });
     }
-    return ok(out);
+    return out;
   }
 
   return {
@@ -181,27 +196,29 @@ export function createBaseCurrencyRepository(
 
     /** What the change would do, without writing anything (J10 "preview"). */
     preview(to: CurrencyCode, rates: RateMap): Result<BaseChangePreview, BaseChangeError> {
-      const p = plan(to, rates);
-      if (!p.ok) return p;
+      const problem = check(to, rates);
+      if (problem) return err(problem);
       const today = deps.today();
       const month = monthOf(today);
       const before = deps.reports.periodTotals(month, today);
       const after = { incomeMinor: 0, expenseMinor: 0, spentSoFarMinor: 0 };
-      for (const t of transactions()) {
+      // Only this month's rows are recomputed for the preview; apply uses the
+      // same rebase() for every row, so the numbers match exactly.
+      for (const t of transactions({ from: month.start, to: month.end })) {
         if (t.deletedAt !== null || t.status !== 'posted' || t.type === 'transfer') continue;
-        if (t.occurredOn < month.start || t.occurredOn >= month.end) continue;
-        const base = p.value.baseById.get(t.id) ?? 0;
+        const base = rebase(t, to, rates).baseAmountMinor;
         if (t.type === 'income') after.incomeMinor += base;
         else {
           after.expenseMinor += base;
           if (t.occurredOn <= today) after.spentSoFarMinor += base;
         }
       }
+      const counts = deps.sql.all<{ n: number }>('SELECT count(*) AS n FROM transactions')[0];
       return ok({
         from: deps.settings.get('baseCurrency'),
         to,
-        transactions: p.value.tx.length,
-        budgets: p.value.budgets.length,
+        transactions: counts?.n ?? 0,
+        budgets: liveBudgets().filter((b) => b.currency !== to).length,
         month: { start: month.start },
         before: {
           incomeMinor: before.incomeMinor,
@@ -214,30 +231,25 @@ export function createBaseCurrencyRepository(
 
     /** Recompute everything in one unit of work: all or nothing. */
     apply(to: CurrencyCode, rates: RateMap): Result<{ transactions: number }, BaseChangeError> {
-      const p = plan(to, rates);
-      if (!p.ok) return p;
+      const problem = check(to, rates);
+      if (problem) return err(problem);
       const from = deps.settings.get('baseCurrency');
+      const p = { value: plan(to, rates) };
       return withUnitOfWork(deps, ({ now, audit }) => {
-        for (const t of p.value.tx) {
-          deps.sql.run(
-            `UPDATE transactions SET fx_rate_to_base = ?, base_amount_minor = ?, updated_at = ?,
-               version = version + 1 WHERE id = ?`,
-            [t.rate, t.baseMinor, now, t.id],
-          );
-        }
-        for (const s of p.value.splits) {
-          deps.sql.run('UPDATE transaction_splits SET base_amount_minor = ? WHERE id = ?', [
-            s.baseMinor,
-            s.id,
-          ]);
-        }
-        for (const b of p.value.budgets) {
-          deps.sql.run(
-            `UPDATE budgets SET amount_minor = ?, currency = ?, updated_at = ?, version = version + 1
-             WHERE id = ?`,
-            [b.amountMinor, to, now, b.id],
-          );
-        }
+        deps.sql.runMany(
+          `UPDATE transactions SET fx_rate_to_base = ?, base_amount_minor = ?, updated_at = ?,
+             version = version + 1 WHERE id = ?`,
+          p.value.tx.map((t) => [t.rate, t.baseMinor, now, t.id]),
+        );
+        deps.sql.runMany(
+          'UPDATE transaction_splits SET base_amount_minor = ? WHERE id = ?',
+          p.value.splits.map((x) => [x.baseMinor, x.id]),
+        );
+        deps.sql.runMany(
+          `UPDATE budgets SET amount_minor = ?, currency = ?, updated_at = ?, version = version + 1
+           WHERE id = ?`,
+          p.value.budgets.map((b) => [b.amountMinor, to, now, b.id]),
+        );
         // Rule templates keep a fallback rate to the *old* base; drop it so a
         // later occurrence uses the FX table or stops with "rate required".
         let rulesUpdated = 0;

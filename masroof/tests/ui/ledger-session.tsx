@@ -187,6 +187,7 @@ export function createTestSession(
       planningNotice.current = null;
       bumpCount++;
     },
+    crashReportsAvailable: true,
     requestNotifications: async () => {
       const p = await planning.ensurePermission();
       bumpCount++;

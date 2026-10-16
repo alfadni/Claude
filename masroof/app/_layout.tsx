@@ -60,6 +60,7 @@ function Navigator() {
         <Stack.Screen name="reports" options={{ title: t('reports.title') }} />
         <Stack.Screen name="fx" options={{ title: t('fx.title') }} />
         <Stack.Screen name="currency" options={{ title: t('baseCurrency.title') }} />
+        <Stack.Screen name="privacy" options={{ title: t('privacy.title') }} />
       </Stack>
       <UndoHost />
       <PlanningHost />

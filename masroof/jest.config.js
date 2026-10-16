@@ -13,6 +13,16 @@ module.exports = {
       transformIgnorePatterns: ['/node_modules/(?!@noble/)'],
     },
     {
+      // 73k-row ledger: query plans and time budgets (docs/PERFORMANCE.md).
+      displayName: 'perf',
+      testEnvironment: 'node',
+      transform: { '^.+\\.[jt]sx?$': ['babel-jest', { presets: ['babel-preset-expo'] }] },
+      moduleNameMapper: { '^@/(.*)$': '<rootDir>/src/$1' },
+      testMatch: ['<rootDir>/tests/perf/**/*.test.ts'],
+      transformIgnorePatterns: ['/node_modules/(?!@noble/)'],
+      setupFilesAfterEnv: ['<rootDir>/tests/perf/setup.ts'],
+    },
+    {
       displayName: 'ui',
       preset: 'jest-expo',
       // testTimeout is ignored inside `projects`; the setup file sets it.

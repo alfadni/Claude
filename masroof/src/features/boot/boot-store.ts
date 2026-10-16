@@ -219,6 +219,9 @@ export const useBootStore = create<BootStore>((set, get) => {
             lastRunOn: null,
           },
         });
+        if (settings.crashReports && platform.crashReporter.available) {
+          void platform.crashReporter.start();
+        }
         await get().runPlanning();
       } catch {
         // No details: errors here may carry SQL or paths. Crash reporting is opt-in (Phase 5).
@@ -232,6 +235,10 @@ export const useBootStore = create<BootStore>((set, get) => {
       state.services.repos.settings.set(key, value);
       const settings = state.services.repos.settings.getAll();
       const patch: Partial<Ready> = { settings, version: state.version + 1 };
+      if (key === 'crashReports') {
+        const reporter = state.services.platform.crashReporter;
+        void (settings.crashReports ? reporter.start() : reporter.stop());
+      }
       if (key === 'locale') {
         patch.i18n = createI18n(settings.locale);
         patch.restartRequired = applyDirection(settings.locale);
