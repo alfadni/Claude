@@ -3,6 +3,7 @@ import { localDateOf, type LocalDate } from '@/domain';
 import type { DataDeps } from '../database';
 import { createAccountsRepository } from './accounts-repository';
 import { createAttachmentsRepository } from './attachments-repository';
+import { createBaseCurrencyRepository } from './base-currency-repository';
 import { createBudgetsRepository } from './budgets-repository';
 import { createCategoryMerge } from './category-merge';
 import { createCategoriesRepository } from './categories-repository';
@@ -45,6 +46,7 @@ export function createRepositories(deps: DataDeps & { timeZone: () => string }) 
   });
   const goals = createGoalsRepository({ ...deps, today, accounts, fx });
   const categoryMerge = createCategoryMerge({ ...deps, categories, budgets });
+  const baseCurrency = createBaseCurrencyRepository({ ...deps, today, settings, fx, reports });
   return {
     today,
     settings,
@@ -60,6 +62,7 @@ export function createRepositories(deps: DataDeps & { timeZone: () => string }) 
     budgets,
     goals,
     categoryMerge,
+    baseCurrency,
   };
 }
 

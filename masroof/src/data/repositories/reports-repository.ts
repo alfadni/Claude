@@ -1,5 +1,8 @@
 import {
+  addMonths,
   convert,
+  monthOf,
+  previous,
   type CategoryKind,
   type CurrencyCode,
   type LocalDate,
@@ -23,6 +26,18 @@ export type PeriodTotals = Readonly<{
 }>;
 
 export type CategoryTotal = Readonly<{ categoryId: string; totalMinor: number; share: number }>;
+
+export type MonthTotals = Readonly<{ month: LocalDate; incomeMinor: number; expenseMinor: number }>;
+
+export type CategoryDelta = Readonly<{
+  categoryId: string;
+  currentMinor: number;
+  previousMinor: number;
+  /** current - previous (positive = spent more). */
+  deltaMinor: number;
+}>;
+
+export type PayeeTotal = Readonly<{ name: string; totalMinor: number; count: number }>;
 
 export type NetWorth = Readonly<{
   currency: CurrencyCode;
@@ -86,6 +101,71 @@ export function createReportsRepository(
       );
       const total = rows.reduce((a, r) => a + r.totalMinor, 0);
       return rows.map((r) => ({ ...r, share: total === 0 ? 0 : r.totalMinor / total }));
+    },
+
+    /**
+     * Income and expense per calendar month, oldest first, for the `count`
+     * months ending with `lastMonth` (ADR-016 trend). Amounts dated after
+     * `today` are scheduled, not yet income/spent, so they are left out.
+     */
+    monthlyTotals(lastMonth: Period, count: number, today: LocalDate): MonthTotals[] {
+      const first = addMonths(lastMonth.start, -(count - 1));
+      const rows = deps.sql.all<{ m: string; incomeMinor: number; expenseMinor: number }>(
+        `SELECT substr(t.occurred_on, 1, 7) AS m,
+                coalesce(sum(CASE WHEN t.type = 'income' THEN t.base_amount_minor END), 0) AS incomeMinor,
+                coalesce(sum(CASE WHEN t.type = 'expense' THEN t.base_amount_minor END), 0) AS expenseMinor
+         FROM transactions t
+         WHERE ${live} AND t.occurred_on >= ? AND t.occurred_on < ? AND t.occurred_on <= ?
+         GROUP BY m`,
+        [first, lastMonth.end, today],
+      );
+      const byMonth = new Map(rows.map((r) => [r.m, r]));
+      const out: MonthTotals[] = [];
+      for (let i = 0; i < count; i++) {
+        const month = monthOf(addMonths(first, i)).start;
+        const r = byMonth.get(month.slice(0, 7));
+        out.push({ month, incomeMinor: r?.incomeMinor ?? 0, expenseMinor: r?.expenseMinor ?? 0 });
+      }
+      return out;
+    },
+
+    /** Per-category totals in a period vs the period before (month-over-month). */
+    categoryComparison(period: Period, kind: CategoryKind, today: LocalDate): CategoryDelta[] {
+      const prev = previous(period);
+      const rows = deps.sql.all<{
+        categoryId: string;
+        currentMinor: number;
+        previousMinor: number;
+      }>(
+        `SELECT s.category_id AS categoryId,
+                coalesce(sum(CASE WHEN t.occurred_on >= ? THEN s.base_amount_minor END), 0) AS currentMinor,
+                coalesce(sum(CASE WHEN t.occurred_on < ? THEN s.base_amount_minor END), 0) AS previousMinor
+         FROM transaction_splits s JOIN transactions t ON t.id = s.transaction_id
+         WHERE ${live} AND s.deleted_at IS NULL AND t.type = ?
+           AND t.occurred_on >= ? AND t.occurred_on < ? AND t.occurred_on <= ?
+         GROUP BY s.category_id`,
+        [period.start, period.start, kind, prev.start, period.end, today],
+      );
+      return rows
+        .map((r) => ({ ...r, deltaMinor: r.currentMinor - r.previousMinor }))
+        .sort(
+          (a, b) =>
+            Math.abs(b.deltaMinor) - Math.abs(a.deltaMinor) ||
+            b.currentMinor - a.currentMinor ||
+            a.categoryId.localeCompare(b.categoryId),
+        );
+    },
+
+    /** Where the money went: expense totals by payee. */
+    topPayees(period: Period, limit: number, today: LocalDate): PayeeTotal[] {
+      return deps.sql.all<PayeeTotal>(
+        `SELECT p.name AS name, sum(t.base_amount_minor) AS totalMinor, count(*) AS count
+         FROM transactions t JOIN payees p ON p.id = t.payee_id
+         WHERE ${live} AND t.type = 'expense'
+           AND t.occurred_on >= ? AND t.occurred_on < ? AND t.occurred_on <= ?
+         GROUP BY p.id ORDER BY totalMinor DESC, count DESC, p.name LIMIT ?`,
+        [period.start, period.end, today, limit],
+      );
     },
 
     /** Balance across accounts marked "include in totals", in the base currency. */

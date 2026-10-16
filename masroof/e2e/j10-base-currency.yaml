@@ -1,0 +1,34 @@
+# J10: change the main currency with a rate, preview, confirm; blocked without a rate.
+appId: app.masroof
+---
+- runFlow: flows/_onboard-skip.yaml
+- tapOn: 'Add transaction'
+- tapOn: '1'
+- tapOn: '2'
+- tapOn: 'Food'
+- tapOn:
+    id: save
+- tapOn: 'Settings'
+- tapOn:
+    id: nav-currency
+- tapOn:
+    id: currency-search
+- inputText: 'SDG'
+- tapOn:
+    id: currency-SDG
+# Negative: no rate → blocked.
+- tapOn:
+    id: base-preview
+- assertVisible:
+    id: base-error
+- tapOn:
+    id: rate-USD
+- inputText: '600'
+- tapOn:
+    id: base-preview
+- assertVisible:
+    id: base-preview-card
+- tapOn:
+    id: base-apply
+- tapOn: 'Change to SDG'
+- assertVisible: '.*Main currency.*'

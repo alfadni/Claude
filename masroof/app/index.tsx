@@ -20,6 +20,12 @@ export default function HomeRoute() {
                 onPress={() => router.push('/transactions')}
               />
               <Button
+                label="📊"
+                variant="secondary"
+                accessibilityLabel={t('reports.title')}
+                onPress={() => router.push('/reports')}
+              />
+              <Button
                 label="⚙"
                 variant="secondary"
                 accessibilityLabel={t('settings.title')}
