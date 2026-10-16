@@ -16,13 +16,12 @@ import type { Locale, Settings } from '@/domain/settings';
 import type { DeviceDefaults } from '../locale/device-defaults';
 
 /**
- * Onboarding (J1): language → base currency → first account → done.
- * App lock (PIN + biometrics) joins as a 'security' step in Phase 2.
+ * Onboarding (J1): language → base currency → first account → app lock → done.
  *
  * Each step commits its data AND the step marker in one unit of work, so an app
  * killed mid-onboarding resumes at the next step with nothing half-created.
  */
-export type OnboardingScreen = 'language' | 'currency' | 'account' | 'done';
+export type OnboardingScreen = 'language' | 'currency' | 'account' | 'security' | 'done';
 
 export function screenFor(step: Settings['onboardingStep']): OnboardingScreen {
   switch (step) {
@@ -33,6 +32,7 @@ export function screenFor(step: Settings['onboardingStep']): OnboardingScreen {
     case 'currency':
       return 'account';
     case 'account':
+      return 'security';
     case 'security':
     case 'done':
       return 'done';
@@ -74,15 +74,20 @@ export function createOnboardingService(deps: DataDeps & { repos: Repositories }
       });
     },
 
-    /** Seeds categories, creates the first account, completes onboarding. */
+    /** Seeds categories and creates the first account (step 3). */
     createFirstAccount(name: string, type: AccountType = 'cash'): Result<string, AccountError[]> {
       return withUnitOfWork(deps, () => {
         repos.categories.seedDefaults();
         const r = ensureFirstAccount(name, type);
         if (!r.ok) return r;
-        repos.settings.set('onboardingStep', 'done');
+        repos.settings.set('onboardingStep', 'account');
         return r;
       });
+    },
+
+    /** Step 4: app lock was set up (or skipped). PIN storage lives in the lock service. */
+    finishSecurity(): void {
+      repos.settings.set('onboardingStep', 'done');
     },
 
     /** "Skip everything" (J1): device defaults, a "Cash" account, empty Home. */

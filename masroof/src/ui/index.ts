@@ -13,3 +13,4 @@ export * from './components/keypad';
 export * from './components/fab';
 export * from './components/snackbar';
 export * from './components/list-row';
+export * from './components/pin-pad';

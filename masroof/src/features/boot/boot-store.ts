@@ -13,12 +13,21 @@ import {
 } from '@/services/attachments/attachment-service';
 import { expoOpenDeps } from '@/services/db/expo-connection';
 import { openEncryptedDatabase, type OpenDeps, type OpenResult } from '@/services/db/open-database';
+import { createBackupService, type BackupService } from '@/services/backup/backup-service';
+import { exportTransactionsCsv } from '@/services/csv/export';
+import { createCsvImporter, type CsvImporter } from '@/services/csv/import';
 import { deviceDefaults, type DeviceDefaults } from '@/services/locale/device-defaults';
+import { resetAllData, type ResetResult } from '@/services/reset/reset-service';
+import { createLockService, type LockService } from '@/services/security/lock-service';
 import {
   createOnboardingService,
   type OnboardingService,
 } from '@/services/onboarding/onboarding-service';
 import { expoPlatform, type Platform } from '@/services/platform/expo-platform';
+
+import type { SecurityState } from '../session/session';
+
+export type { SecurityState };
 
 export type BootErrorKind = Exclude<OpenResult['status'], 'ready'> | 'unexpected';
 
@@ -26,6 +35,12 @@ export type Services = Readonly<{
   repos: Repositories;
   onboarding: OnboardingService;
   attachments: AttachmentService;
+  lock: LockService;
+  backup: BackupService;
+  csv: CsvImporter;
+  /** Wipes everything (J11). Only callable with the typed confirmation word. */
+  reset: (typed: string) => Promise<ResetResult>;
+  exportCsv: (categoryName: (c: { name: string; seedKey: string | null }) => string) => string;
   platform: Platform;
   device: DeviceDefaults;
 }>;
@@ -39,6 +54,7 @@ type Ready = {
   restartRequired: boolean;
   /** Bumped after every write so screens re-read (J2: "update instantly"). */
   version: number;
+  security: SecurityState;
 };
 
 export type BootState =
@@ -48,6 +64,9 @@ type BootStore = BootState & {
   boot: (deps?: OpenDeps, platform?: Platform) => Promise<void>;
   updateSetting: <K extends SettingKey>(key: K, value: Settings[K]) => void;
   bump: () => void;
+  refreshSecurity: () => Promise<void>;
+  /** J11 from the "key lost" boot error: no database is open, so only files and keys are wiped. */
+  resetWithoutDatabase: (typed: string, platform?: Platform) => Promise<ResetResult>;
 };
 
 export function readDeviceDefaults(): DeviceDefaults {
@@ -65,7 +84,17 @@ export const useBootStore = create<BootStore>((set, get) => {
   // Replace (not merge) on status changes, so an error state can never keep
   // a stale DB handle or settings from a previous session.
   const transition = (next: BootState) =>
-    set({ ...next, boot: get().boot, updateSetting: get().updateSetting, bump: get().bump }, true);
+    set(
+      {
+        ...next,
+        boot: get().boot,
+        updateSetting: get().updateSetting,
+        bump: get().bump,
+        refreshSecurity: get().refreshSecurity,
+        resetWithoutDatabase: get().resetWithoutDatabase,
+      },
+      true,
+    );
 
   return {
     status: 'opening',
@@ -103,19 +132,49 @@ export const useBootStore = create<BootStore>((set, get) => {
         runMaintenance(repos, attachments);
         const settings = repos.settings.getAll();
         applyDirection(settings.locale);
+        const i18n = createI18n(settings.locale);
+        const lock = createLockService({
+          secrets: platform.secrets,
+          vault: platform.vault(() => i18n.t('lock.biometricPrompt')),
+          randomBytes: platform.randomBytes,
+          now: Date.now,
+        });
+        const services: Services = {
+          repos,
+          onboarding: createOnboardingService({ ...data, repos }),
+          attachments,
+          lock,
+          backup: createBackupService({
+            sql: data.sql,
+            attachments: repos.attachments,
+            files: platform.files,
+            attachmentKey: result.attachmentKey,
+            randomBytes: platform.randomBytes,
+            now: Date.now,
+            appVersion: platform.appVersion,
+            openScratch: platform.openScratch,
+          }),
+          csv: createCsvImporter({ ...data, repos }),
+          exportCsv: (categoryName) => exportTransactionsCsv(data.sql, categoryName),
+          reset: (typed) =>
+            resetAllData(
+              {
+                ...platform.resetPorts(() => result.connection.close()),
+                wipeLock: () => lock.wipe(),
+              },
+              typed,
+            ),
+          platform,
+          device,
+        };
         transition({
           status: 'ready',
-          services: {
-            repos,
-            onboarding: createOnboardingService({ ...data, repos }),
-            attachments,
-            platform,
-            device,
-          },
+          services,
           settings,
-          i18n: createI18n(settings.locale),
+          i18n,
           restartRequired: false,
           version: 0,
+          security: await readSecurity(lock, platform),
         });
       } catch {
         // No details: errors here may carry SQL or paths. Crash reporting is opt-in (Phase 5).
@@ -141,8 +200,38 @@ export const useBootStore = create<BootStore>((set, get) => {
       if (state.status !== 'ready') return;
       set({ version: state.version + 1, settings: state.services.repos.settings.getAll() });
     },
+
+    async resetWithoutDatabase(typed, platform = expoPlatform) {
+      const lock = createLockService({
+        secrets: platform.secrets,
+        vault: platform.vault(() => ''),
+        randomBytes: platform.randomBytes,
+        now: Date.now,
+      });
+      return resetAllData(
+        { ...platform.resetPorts(() => undefined), wipeLock: () => lock.wipe() },
+        typed,
+      );
+    },
+
+    async refreshSecurity() {
+      const state = get();
+      if (state.status !== 'ready') return;
+      const security = await readSecurity(state.services.lock, state.services.platform);
+      set({ security, version: state.version + 1 });
+    },
   };
 });
+
+async function readSecurity(lock: LockService, platform: Platform): Promise<SecurityState> {
+  const [s, compromised] = await Promise.all([lock.status(), platform.isDeviceCompromised()]);
+  return {
+    pinSet: s.pinSet,
+    biometricsEnabled: s.biometricsEnabled,
+    biometricsAvailable: s.biometricsAvailable,
+    compromised,
+  };
+}
 
 /** Trash retention (30 days) and crash leftovers. Best effort: never blocks startup. */
 function runMaintenance(repos: Repositories, attachments: AttachmentService) {

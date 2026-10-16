@@ -20,6 +20,8 @@ describe('J1 onboarding', () => {
     expect(onboarding.screen()).toBe('account');
     const r = onboarding.createFirstAccount('الخزنة');
     expect(r.ok).toBe(true);
+    expect(onboarding.screen()).toBe('security');
+    onboarding.finishSecurity();
     expect(onboarding.screen()).toBe('done');
     expect(repos.settings.getAll()).toMatchObject({
       locale: 'ar',
@@ -112,6 +114,6 @@ describe('J1 onboarding', () => {
       ['none', 'language', 'currency', 'account', 'security', 'done'].map((s) =>
         screenFor(s as never),
       ),
-    ).toEqual(['language', 'currency', 'account', 'done', 'done', 'done']);
+    ).toEqual(['language', 'currency', 'account', 'security', 'done', 'done']);
   });
 });

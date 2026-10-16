@@ -1,13 +1,17 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { I18nextProvider } from 'react-i18next';
-import { View } from 'react-native';
+import { AppState, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { BootErrorScreen } from '@/features/boot/boot-error-screen';
 import { useBootStore } from '@/features/boot/boot-store';
+import { LockScreen } from '@/features/lock/lock-screen';
+import { useLockStore } from '@/features/lock/lock-store';
+import { PrivacyCover } from '@/features/lock/privacy-cover';
 import { OnboardingScreen } from '@/features/onboarding/onboarding-screen';
+import { ResetScreen } from '@/features/reset/reset-screen';
 import { SessionHost } from '@/features/session/session-host';
 import { UndoHost } from '@/features/undo/undo-host';
 import { restartForDirection } from '@/i18n/direction';
@@ -40,8 +44,67 @@ function Navigator() {
         <Stack.Screen name="categories" options={{ title: t('categories.title') }} />
         <Stack.Screen name="trash" options={{ title: t('trash.title') }} />
         <Stack.Screen name="settings" options={{ title: t('settings.title') }} />
+        <Stack.Screen name="security" options={{ title: t('security.title') }} />
+        <Stack.Screen name="backup" options={{ title: t('backup.title') }} />
+        <Stack.Screen name="data" options={{ title: t('csv.title') }} />
+        <Stack.Screen name="reset" options={{ title: t('reset.title') }} />
       </Stack>
       <UndoHost />
+    </View>
+  );
+}
+
+/**
+ * App lock (J8): locks on cold start when a PIN is set and after the timeout
+ * in the background; hides content from screen readers while locked; covers
+ * the screen whenever the app is not active (app-switcher snapshot).
+ */
+function LockGate({ children }: { children: ReactNode }) {
+  const state = useBootStore();
+  const { locked, covered, onAppState, lockNow, unlock } = useLockStore();
+  const [resetting, setResetting] = useState(false);
+  const ready = state.status === 'ready' ? state : null;
+  const pinSet = ready?.security.pinSet ?? false;
+  const timeout = ready?.settings.lockTimeoutSeconds ?? 60;
+
+  useEffect(() => {
+    if (pinSet) lockNow();
+    // Cold start only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) =>
+      onAppState(next, { lockEnabled: pinSet, timeoutSeconds: timeout, now: Date.now() }),
+    );
+    return () => sub.remove();
+  }, [onAppState, pinSet, timeout]);
+
+  if (!ready) return null;
+  const showLock = locked && pinSet;
+  return (
+    <View style={{ flex: 1 }}>
+      <View
+        style={{ flex: 1 }}
+        importantForAccessibility={showLock ? 'no-hide-descendants' : 'auto'}
+        accessibilityElementsHidden={showLock}
+      >
+        {children}
+      </View>
+      {showLock ? (
+        <View style={{ position: 'absolute', top: 0, bottom: 0, start: 0, end: 0 }}>
+          {resetting ? (
+            <ResetScreen
+              reset={ready.services.reset}
+              onDone={ready.services.platform.reloadApp}
+              onCancel={() => setResetting(false)}
+            />
+          ) : (
+            <LockScreen onUnlocked={unlock} onReset={() => setResetting(true)} />
+          )}
+        </View>
+      ) : null}
+      {covered ? <PrivacyCover label={ready.i18n.t('privacy.hidden')} /> : null}
     </View>
   );
 }
@@ -53,7 +116,9 @@ function ReadyApp() {
   return (
     <SessionHost>
       {onboardingDone ? (
-        <Navigator />
+        <LockGate>
+          <Navigator />
+        </LockGate>
       ) : (
         <View style={{ flex: 1 }}>
           {state.restartRequired ? (
@@ -79,6 +144,7 @@ function ReadyApp() {
 
 export default function RootLayout() {
   const state = useBootStore();
+  const [resettingFromError, setResettingFromError] = useState(false);
 
   useEffect(() => {
     void useBootStore.getState().boot();
@@ -93,7 +159,22 @@ export default function RootLayout() {
           {state.status === 'ready' ? (
             <ReadyApp />
           ) : state.status === 'error' ? (
-            <BootErrorScreen kind={state.kind} onRetry={() => void state.boot()} />
+            resettingFromError ? (
+              <ResetScreen
+                reset={(typed) => state.resetWithoutDatabase(typed)}
+                onDone={() => {
+                  setResettingFromError(false);
+                  void state.boot();
+                }}
+                onCancel={() => setResettingFromError(false)}
+              />
+            ) : (
+              <BootErrorScreen
+                kind={state.kind}
+                onRetry={() => void state.boot()}
+                onReset={() => setResettingFromError(true)}
+              />
+            )
           ) : (
             <LoadingState label={state.i18n.t('common.loading')} />
           )}

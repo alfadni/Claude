@@ -1,0 +1,19 @@
+# J9: create an encrypted backup and hand it to the share sheet.
+# (Restoring on a second device needs two simulators; covered by node tests.)
+appId: app.masroof
+---
+- runFlow: flows/_onboard-skip.yaml
+- tapOn: 'Settings'
+- tapOn:
+    id: nav-backup
+- tapOn:
+    id: backup-pass
+- inputText: 'correct horse battery'
+- tapOn:
+    id: backup-pass2
+- inputText: 'correct horse battery'
+- tapOn:
+    id: backup-create
+- extendedWaitUntil:
+    visible: 'Masroof-.*|Save to Files|Copy|AirDrop'
+    timeout: 20000

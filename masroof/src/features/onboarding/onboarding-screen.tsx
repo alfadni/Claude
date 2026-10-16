@@ -9,6 +9,7 @@ import type { DeviceDefaults } from '@/services/locale/device-defaults';
 import { Banner, Button, Chip, spacing, Stack, Text, TextField, useTheme } from '@/ui';
 
 import { CurrencyPicker } from '../accounts/currency-picker';
+import { PinSetup } from '../security/pin-setup';
 import { useSession } from '../session/session';
 import { useFormat } from '../session/use-format';
 
@@ -36,6 +37,12 @@ export function OnboardingScreen({
   const [accountName, setAccountName] = useState('');
   const [sample, setSample] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pinDone, setPinDone] = useState(false);
+  const finish = () => {
+    onboarding.finishSecurity();
+    session.bump();
+    onFinished();
+  };
 
   const advance = () => session.bump();
   const skip = (
@@ -130,7 +137,6 @@ export function OnboardingScreen({
               selected={sample}
               onPress={() => setSample(!sample)}
             />
-            <Banner message={t('onboarding.securityLater')} />
             {error ? <Banner tone="danger" message={error} /> : null}
             <Button
               label={t('onboarding.start')}
@@ -146,11 +152,55 @@ export function OnboardingScreen({
                       `${t('onboarding.sampleData')}: ${f.categoryName({ name: '', seedKey: k })}`,
                   });
                 }
-                session.bump();
-                onFinished();
+                advance();
               }}
             />
             {skip}
+          </Stack>
+        ) : null}
+
+        {screen === 'security' ? (
+          <Stack gap="md">
+            <Text variant="title" accessibilityRole="header">
+              {t('security.title')}
+            </Text>
+            <Text tone="muted">{t('security.intro')}</Text>
+            {pinDone ? (
+              <>
+                {session.security.biometricsAvailable ? (
+                  <Chip
+                    role="checkbox"
+                    label={t('security.biometrics')}
+                    selected={session.security.biometricsEnabled}
+                    testID="onboarding-biometrics"
+                    onPress={async () => {
+                      if (session.security.biometricsEnabled)
+                        await session.lock.disableBiometrics();
+                      else await session.lock.enableBiometrics();
+                      await session.refreshSecurity();
+                    }}
+                  />
+                ) : null}
+                <Banner tone="warning" message={t('security.forgotWarning')} />
+                <Button label={t('onboarding.start')} testID="onboarding-finish" onPress={finish} />
+              </>
+            ) : (
+              <>
+                <PinSetup
+                  onDone={async (pin) => {
+                    await session.lock.setPin(pin);
+                    await session.refreshSecurity();
+                    setPinDone(true);
+                  }}
+                />
+                <Button
+                  label={t('common.skip')}
+                  variant="secondary"
+                  testID="security-skip"
+                  onPress={finish}
+                />
+              </>
+            )}
           </Stack>
         ) : null}
       </ScrollView>

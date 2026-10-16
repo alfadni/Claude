@@ -9,19 +9,20 @@ import type { SqlExecutor, SqlValue } from '@/data/sql-executor';
 
 import { isValidKeyHex, type DbConnection, type OpenDeps, type SecretStore } from './open-database';
 
-const DB_FILE = 'masroof.db';
+export const DB_FILE = 'masroof.db';
 
 const secureOptions: SecureStore.SecureStoreOptions = {
   // Never synced to iCloud Keychain / Google backup; unreadable while locked.
   keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
 };
 
-export const expoSecretStore: SecretStore = {
+export const expoSecretStore: SecretStore & { delete: (key: string) => Promise<void> } = {
   get: (key) => SecureStore.getItemAsync(key, secureOptions),
   set: (key, value) => SecureStore.setItemAsync(key, value, secureOptions),
+  delete: (key) => SecureStore.deleteItemAsync(key, secureOptions),
 };
 
-function executor(raw: SQLiteDatabase): SqlExecutor {
+export function executor(raw: SQLiteDatabase): SqlExecutor {
   return {
     exec: (sql) => raw.execSync(sql),
     run: (sql, params: readonly SqlValue[] = []) => {

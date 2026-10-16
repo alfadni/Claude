@@ -59,7 +59,9 @@ export function SettingsScreen({
   restartRequired: boolean;
   onChange: <K extends SettingKey>(key: K, value: Settings[K]) => void;
   onRestart: () => void;
-  onNavigate?: (to: 'accounts' | 'categories' | 'trash') => void;
+  onNavigate?: (
+    to: 'accounts' | 'categories' | 'trash' | 'security' | 'backup' | 'data' | 'reset',
+  ) => void;
   t: TFunction;
 }) {
   return (
@@ -89,6 +91,34 @@ export function SettingsScreen({
               label={t('trash.title')}
               variant="secondary"
               onPress={() => onNavigate('trash')}
+            />
+          </Card>
+        ) : null}
+        {onNavigate ? (
+          <Card>
+            <Button
+              label={t('settings.security')}
+              variant="secondary"
+              onPress={() => onNavigate('security')}
+              testID="nav-security"
+            />
+            <Button
+              label={t('settings.backup')}
+              variant="secondary"
+              onPress={() => onNavigate('backup')}
+              testID="nav-backup"
+            />
+            <Button
+              label={t('settings.data')}
+              variant="secondary"
+              onPress={() => onNavigate('data')}
+              testID="nav-data"
+            />
+            <Button
+              label={t('settings.reset')}
+              variant="danger"
+              onPress={() => onNavigate('reset')}
+              testID="nav-reset"
             />
           </Card>
         ) : null}

@@ -34,7 +34,18 @@
           "useSQLCipher": true
         }
       ],
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Allow Masroof to use Face ID to unlock the app."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Masroof to use Face ID to unlock the app."
+        }
+      ],
       [
         "expo-localization",
         {

@@ -42,6 +42,7 @@ export default function HomeRoute() {
           onAllTransactions: () => router.push('/transactions'),
           onSettings: () => router.push('/settings'),
           onAccounts: () => router.push('/accounts'),
+          onBackup: () => router.push('/backup'),
         }}
       />
     </>

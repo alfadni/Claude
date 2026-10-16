@@ -12,3 +12,4 @@ export * from './ledger/categories';
 export * from './ledger/accounts';
 export * from './ledger/drafts';
 export * from './ledger/search';
+export * from './security/lock-policy';

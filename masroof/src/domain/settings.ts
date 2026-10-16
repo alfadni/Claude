@@ -18,6 +18,8 @@ export type Settings = {
   onboardingStep: 'none' | 'language' | 'currency' | 'account' | 'security' | 'done';
   /** Quick add defaults to the last account used (spec §5.3). */
   lastAccountId: string | null;
+  /** Epoch ms of the last encrypted backup, for backup reminders (spec 5.14). */
+  lastBackupAt: number | null;
 };
 
 export type SettingKey = keyof Settings;
@@ -32,6 +34,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   lockTimeoutSeconds: 60,
   onboardingStep: 'none',
   lastAccountId: null,
+  lastBackupAt: null,
 });
 
 const oneOf =
@@ -59,7 +62,16 @@ export const SETTING_VALIDATORS: { [K in SettingKey]: (v: unknown) => v is Setti
   ]),
   lastAccountId: (v): v is string | null =>
     v === null || (typeof v === 'string' && v.length > 0 && v.length <= 64),
+  lastBackupAt: (v): v is number | null =>
+    v === null || (typeof v === 'number' && Number.isSafeInteger(v) && v > 0),
 };
+
+/** Remind after 30 days without a backup (or never), once there is data to lose. */
+export const BACKUP_REMINDER_MS = 30 * 24 * 60 * 60 * 1000;
+export function backupOverdue(lastBackupAt: number | null, now: number, hasData: boolean): boolean {
+  if (!hasData) return false;
+  return lastBackupAt === null || now - lastBackupAt > BACKUP_REMINDER_MS;
+}
 
 export function isSettingKey(key: string): key is SettingKey {
   return key in SETTING_VALIDATORS;
