@@ -16,6 +16,8 @@ export type Settings = {
   lockTimeoutSeconds: number;
   /** Last completed onboarding step, so a killed app resumes (J1). */
   onboardingStep: 'none' | 'language' | 'currency' | 'account' | 'security' | 'done';
+  /** Quick add defaults to the last account used (spec §5.3). */
+  lastAccountId: string | null;
 };
 
 export type SettingKey = keyof Settings;
@@ -29,6 +31,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   theme: 'system',
   lockTimeoutSeconds: 60,
   onboardingStep: 'none',
+  lastAccountId: null,
 });
 
 const oneOf =
@@ -54,6 +57,8 @@ export const SETTING_VALIDATORS: { [K in SettingKey]: (v: unknown) => v is Setti
     'security',
     'done',
   ]),
+  lastAccountId: (v): v is string | null =>
+    v === null || (typeof v === 'string' && v.length > 0 && v.length <= 64),
 };
 
 export function isSettingKey(key: string): key is SettingKey {

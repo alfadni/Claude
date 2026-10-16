@@ -5,11 +5,13 @@ import type { AppDatabase } from '@/data/database';
 import { schema } from '@/data/schema';
 import { useBootStore } from '@/features/boot/boot-store';
 import type { OpenDeps, SecretStore } from '@/services/db/open-database';
+import type { Platform } from '@/services/platform/expo-platform';
 
 import { betterSqliteExecutor, seededBytes } from '../helpers/sqlite';
 
 jest.mock('@/services/db/expo-connection', () => ({ expoOpenDeps: {} }));
-jest.mock('expo', () => ({ reloadAppAsync: jest.fn() }));
+jest.mock('@/services/platform/expo-platform', () => ({ expoPlatform: {} }));
+jest.mock('expo', () => ({ ...jest.requireActual('expo'), reloadAppAsync: jest.fn() }));
 jest.mock('expo-crypto', () => ({
   getRandomBytes: (n: number) => new Uint8Array(n).map((_, i) => (i * 37 + 11) % 256),
 }));
@@ -22,6 +24,22 @@ function memorySecrets(): SecretStore {
   const m = new Map<string, string>();
   return { get: async (k) => m.get(k) ?? null, set: async (k, v) => void m.set(k, v) };
 }
+
+const platform: Platform = {
+  files: {
+    write: async () => undefined,
+    read: async () => new Uint8Array(),
+    move: () => undefined,
+    delete: () => undefined,
+    list: () => [],
+    availableBytes: () => 1e9,
+  },
+  compress: async () => new Uint8Array([1]),
+  pickImage: async () => ({ status: 'cancelled' }),
+  randomBytes: (n) => new Uint8Array(n).map((_, i) => (i * 31 + 7) % 256),
+  openSystemSettings: () => undefined,
+  haptic: () => undefined,
+};
 
 function plainDeps(raw = new Database(':memory:'), secrets = memorySecrets()): OpenDeps {
   return {
@@ -39,7 +57,7 @@ function plainDeps(raw = new Database(':memory:'), secrets = memorySecrets()): O
 
 describe('boot store', () => {
   it('fresh install: opens the DB and seeds settings from the device (J1 skip path)', async () => {
-    await useBootStore.getState().boot(plainDeps());
+    await useBootStore.getState().boot(plainDeps(), platform);
     const s = useBootStore.getState();
     expect(s.status).toBe('ready');
     if (s.status !== 'ready') return;
@@ -50,15 +68,15 @@ describe('boot store', () => {
   it("second launch keeps the user's settings rather than re-seeding", async () => {
     const raw = new Database(':memory:');
     const secrets = memorySecrets();
-    await useBootStore.getState().boot(plainDeps(raw, secrets));
+    await useBootStore.getState().boot(plainDeps(raw, secrets), platform);
     useBootStore.getState().updateSetting('baseCurrency', 'USD');
-    await useBootStore.getState().boot(plainDeps(raw, secrets));
+    await useBootStore.getState().boot(plainDeps(raw, secrets), platform);
     const s = useBootStore.getState();
     expect(s.status === 'ready' && s.settings.baseCurrency).toBe('USD');
   });
 
   it('switching language rebuilds translations', async () => {
-    await useBootStore.getState().boot(plainDeps());
+    await useBootStore.getState().boot(plainDeps(), platform);
     useBootStore.getState().updateSetting('locale', 'en');
     const s = useBootStore.getState();
     expect(s.status === 'ready' && s.i18n.t('home.addFirst')).toBe('Add your first expense');
@@ -66,23 +84,30 @@ describe('boot store', () => {
 
   it('maps open failures to an error state', async () => {
     const deps = { ...plainDeps(), requireCipher: true };
-    await useBootStore.getState().boot(deps);
+    await useBootStore.getState().boot(deps, platform);
     expect(useBootStore.getState()).toMatchObject({ status: 'error', kind: 'cipher_unavailable' });
   });
 
   it('unexpected exceptions become a generic error with no details', async () => {
-    await useBootStore.getState().boot(plainDeps()); // a previous ready session
+    await useBootStore.getState().boot(plainDeps(), platform); // a previous ready session
     const deps: OpenDeps = {
       ...plainDeps(),
       openConnection: () => {
         throw new Error('SQLITE_CANTOPEN /private/path');
       },
     };
-    await useBootStore.getState().boot(deps);
+    await useBootStore.getState().boot(deps, platform);
     const s = useBootStore.getState();
     expect(s).toMatchObject({ status: 'error', kind: 'unexpected' });
     // No stale session survives, and no error detail leaks into state.
-    expect(Object.keys(s).sort()).toEqual(['boot', 'i18n', 'kind', 'status', 'updateSetting']);
+    expect(Object.keys(s).sort()).toEqual([
+      'boot',
+      'bump',
+      'i18n',
+      'kind',
+      'status',
+      'updateSetting',
+    ]);
     expect(JSON.stringify({ status: s.status, kind: 'kind' in s ? s.kind : null })).not.toContain(
       '/private/path',
     );

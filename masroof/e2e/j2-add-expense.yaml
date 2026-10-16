@@ -1,0 +1,36 @@
+# J2: amount → category → save; calendar marker; validation; scheduled.
+appId: app.masroof
+---
+- runFlow: flows/_onboard-skip.yaml
+- tapOn: 'Add transaction'
+- tapOn: '1'
+- tapOn: '2'
+- tapOn: 'Food'
+- tapOn:
+    id: save
+- assertVisible: 'Spent so far'
+- assertVisible:
+    id: 'total-spent'
+# Negative: invalid expression keeps last valid value, save disabled.
+- tapOn: 'Add transaction'
+- tapOn: '1'
+- tapOn: '2'
+- tapOn: 'plus'
+- tapOn: 'plus'
+- assertVisible:
+    id: amount-error
+- assertVisible:
+    id: save
+    enabled: false
+- tapOn: 'Delete last digit'
+- tapOn: '8'
+- tapOn: 'Food'
+- assertVisible:
+    id: save
+    enabled: true
+- tapOn: 'Cancel'
+# Negative: zero amount.
+- tapOn: 'Add transaction'
+- tapOn: '0'
+- assertVisible: 'Amount must be more than zero'
+- tapOn: 'Cancel'

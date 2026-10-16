@@ -38,7 +38,14 @@ describe('translations', () => {
   });
 
   it('Arabic strings are actually Arabic (no untranslated copies)', () => {
-    const allowedSame = new Set(['languages.en', 'languages.ar']);
+    const allowedSame = new Set([
+      'languages.en',
+      'languages.ar',
+      'quickAdd.amountResult',
+      'amount.neutral',
+      'dates.monthYear',
+      'dates.dayMonthYear',
+    ]);
     for (const key of Object.keys(flatEn)) {
       if (allowedSame.has(key)) continue;
       expect([key, flatAr[key] === flatEn[key]]).toEqual([key, false]);

@@ -1,0 +1,31 @@
+# J1 happy path: Arabic → RTL, SDG, first account, Home.
+appId: app.masroof
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: lang-ar
+- tapOn: 'أعد التشغيل الآن' # restart to flip layout direction
+- extendedWaitUntil:
+    visible:
+      id: onboarding-currency
+    timeout: 15000
+- tapOn:
+    id: currency-SDG
+- tapOn:
+    id: currency-continue
+- tapOn:
+    id: onboarding-start
+- assertVisible: 'لا توجد معاملات بعد'
+# J1 negative: killed mid-onboarding resumes at the next step.
+- launchApp:
+    clearState: true
+- tapOn:
+    id: lang-en
+- stopApp
+- launchApp
+- assertVisible:
+    id: onboarding-currency
+# J1 negative: skip everything.
+- runFlow: flows/_onboard-skip.yaml
+- assertVisible: 'Add your first expense'

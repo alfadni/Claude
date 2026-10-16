@@ -1,0 +1,32 @@
+# J4: transfer between accounts (not income/expense); same-account blocked.
+appId: app.masroof
+---
+- runFlow: flows/_onboard-skip.yaml
+- tapOn: 'Settings'
+- tapOn: 'Accounts'
+- tapOn:
+    id: add-account
+- tapOn:
+    id: account-name
+- inputText: 'Bank'
+- tapOn:
+    id: account-opening
+- eraseText
+- inputText: '500'
+- tapOn:
+    id: account-save
+- back
+- back
+- tapOn: 'Add transaction'
+- tapOn: 'Transfer'
+- tapOn: '1'
+- tapOn: '0'
+- tapOn: '0'
+- tapOn: 'Bank.*'
+- tapOn:
+    id: save
+- tapOn: 'Balance'
+- assertVisible:
+    id: net-worth
+- assertVisible:
+    id: total-spent

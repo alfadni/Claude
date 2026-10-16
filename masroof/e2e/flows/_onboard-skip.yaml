@@ -1,0 +1,12 @@
+# Helper: fresh install, skip onboarding (J1 negative: defaults applied).
+appId: app.masroof
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: onboarding-language
+    timeout: 15000
+- tapOn:
+    id: skip-all
+- assertVisible: 'No transactions yet'

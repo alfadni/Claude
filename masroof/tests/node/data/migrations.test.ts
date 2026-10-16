@@ -64,7 +64,7 @@ describe('migration runner', () => {
 
   it('rejects gaps in numbering', () => {
     const t = createTestDb({ migrate: false });
-    const gap: Migration = { version: 3, name: 'gap', statements: [] };
+    const gap: Migration = { version: SCHEMA_VERSION + 2, name: 'gap', statements: [] };
     expect(() => migrate(t.sql, [...MIGRATIONS, gap])).toThrow(/without gaps/);
   });
 });
@@ -98,5 +98,35 @@ describe('schema drift: Drizzle definitions match migrated DDL', () => {
        WHERE m.type = 'table' AND upper(p.type) IN ('REAL','FLOAT','DOUBLE','NUMERIC')`,
     );
     expect(real).toEqual([]);
+  });
+});
+
+describe('migration 0002 (ledger)', () => {
+  it('upgrades a v1 database with data, backfilling split base amounts', () => {
+    const t = createTestDb({ migrate: false });
+    migrate(t.sql, MIGRATIONS.slice(0, 1));
+    const now = 1;
+    t.sql.run(
+      `INSERT INTO accounts (id, created_at, updated_at, name, type, currency) VALUES ('a',?,?,'Cash','cash','SDG')`,
+      [now, now],
+    );
+    t.sql.run(
+      `INSERT INTO categories (id, created_at, updated_at, name, kind) VALUES ('c',?,?,'Food','expense')`,
+      [now, now],
+    );
+    t.sql.run(
+      `INSERT INTO transactions (id, created_at, updated_at, type, account_id, amount_minor, currency, fx_rate_to_base, base_amount_minor, occurred_at, occurred_tz, occurred_on)
+       VALUES ('t',?,?,'expense','a',60000,'SDG','0.001666',100,1,'UTC','2026-01-01')`,
+      [now, now],
+    );
+    t.sql.run(
+      `INSERT INTO transaction_splits (id, created_at, updated_at, transaction_id, category_id, amount_minor) VALUES ('s1',?,?,'t','c',30000),('s2',?,?,'t','c',30000)`,
+      [now, now, now, now],
+    );
+    expect(migrate(t.sql)).toEqual({ status: 'migrated', from: 1, to: SCHEMA_VERSION });
+    expect(t.sql.all('SELECT base_amount_minor AS b FROM transaction_splits ORDER BY id')).toEqual([
+      { b: 50 },
+      { b: 50 },
+    ]);
   });
 });

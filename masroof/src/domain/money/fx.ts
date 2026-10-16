@@ -85,3 +85,17 @@ export function deriveRate(
   invariant(!/^0(\.0*)?$/.test(text), 'Derived rate underflows the supported precision');
   return text as DecimalRate;
 }
+
+/** 1 / rate, rounded half-even to 12 fractional digits (for reverse lookups). */
+export function invertRate(rate: DecimalRate): DecimalRate {
+  const { num, den } = rateToFraction(rate);
+  const scale = 10n ** BigInt(MAX_RATE_FRACTION_DIGITS);
+  const scaled = divRoundHalfEven(den * scale, num);
+  invariant(scaled > 0n, 'Inverted rate underflows the supported precision');
+  const digits = scaled.toString().padStart(MAX_RATE_FRACTION_DIGITS + 1, '0');
+  const whole = digits.slice(0, digits.length - MAX_RATE_FRACTION_DIGITS);
+  const frac = digits.slice(digits.length - MAX_RATE_FRACTION_DIGITS).replace(/0+$/, '');
+  return (frac ? `${whole}.${frac}` : whole) as DecimalRate;
+}
+
+export const RATE_ONE = '1' as DecimalRate;

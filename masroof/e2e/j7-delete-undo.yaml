@@ -1,0 +1,27 @@
+# J7: delete → undo restores; missed undo → Trash → restore.
+appId: app.masroof
+---
+- runFlow: flows/_onboard-skip.yaml
+- tapOn: 'Add transaction'
+- tapOn: '7'
+- tapOn: 'Food'
+- tapOn:
+    id: save
+- tapOn: 'All transactions'
+- tapOn: 'Food.*'
+- tapOn:
+    id: delete
+- assertVisible: 'Transaction deleted'
+- tapOn: 'Undo'
+- assertVisible: 'Food.*'
+# Missed undo window: recover from Trash.
+- tapOn: 'Food.*'
+- tapOn:
+    id: delete
+- waitForAnimationToEnd:
+    timeout: 6000
+- back
+- tapOn: 'Settings'
+- tapOn: 'Trash'
+- tapOn: 'Restore'
+- assertVisible: 'Trash is empty'
