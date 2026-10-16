@@ -32,8 +32,20 @@ export function SessionHost({ children }: { children: ReactNode }) {
       shareBytes: services.platform.shareBytes,
       pickFile: services.platform.pickFile,
       reloadApp: services.platform.reloadApp,
+      planning: services.planning,
+      notificationPermission: ready.planning.permission,
+      planningNotice: ready.planning.notice,
+      dismissPlanningNotice: state.dismissPlanningNotice,
+      requestNotifications: state.requestNotifications,
     };
-  }, [ready, state.bump, state.updateSetting, state.refreshSecurity]);
+  }, [
+    ready,
+    state.bump,
+    state.updateSetting,
+    state.refreshSecurity,
+    state.dismissPlanningNotice,
+    state.requestNotifications,
+  ]);
   if (!value) return null;
   return <SessionProvider value={value}>{children}</SessionProvider>;
 }

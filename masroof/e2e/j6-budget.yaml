@@ -1,0 +1,31 @@
+# J6 / J2: a budget turns amber at 80% after a quick add.
+appId: app.masroof
+---
+- runFlow: flows/_onboard-skip.yaml
+- tapOn: 'Settings'
+- tapOn:
+    id: nav-budgets
+- tapOn: 'Add budget'
+- tapOn:
+    id: budget-cat-overall
+- tapOn:
+    id: budget-amount
+- inputText: '10'
+- tapOn:
+    id: budget-save
+- runFlow:
+    when:
+      visible: 'Allow'
+    commands:
+      - tapOn: 'Allow'
+- assertVisible: '.*On track.*'
+- back
+- back
+- tapOn: 'Add transaction'
+- tapOn: '9'
+- tapOn: 'Food'
+- tapOn:
+    id: save
+- assertVisible:
+    id: budget-strip
+- assertVisible: '.*Getting close.*'

@@ -11,6 +11,8 @@ import { LockScreen } from '@/features/lock/lock-screen';
 import { useLockStore } from '@/features/lock/lock-store';
 import { PrivacyCover } from '@/features/lock/privacy-cover';
 import { OnboardingScreen } from '@/features/onboarding/onboarding-screen';
+import '@/features/planning/background-task';
+import { PlanningHost } from '@/features/planning/planning-host';
 import { ResetScreen } from '@/features/reset/reset-screen';
 import { SessionHost } from '@/features/session/session-host';
 import { UndoHost } from '@/features/undo/undo-host';
@@ -48,8 +50,16 @@ function Navigator() {
         <Stack.Screen name="backup" options={{ title: t('backup.title') }} />
         <Stack.Screen name="data" options={{ title: t('csv.title') }} />
         <Stack.Screen name="reset" options={{ title: t('reset.title') }} />
+        <Stack.Screen name="upcoming" options={{ title: t('planning.upcomingTitle') }} />
+        <Stack.Screen name="recurring" options={{ title: t('planning.rulesTitle') }} />
+        <Stack.Screen name="rule/[id]" options={{ title: t('planning.formTitle') }} />
+        <Stack.Screen name="budgets" options={{ title: t('budgets.title') }} />
+        <Stack.Screen name="budget/[id]" options={{ title: t('budgets.title') }} />
+        <Stack.Screen name="goals" options={{ title: t('goals.title') }} />
+        <Stack.Screen name="goal/[id]" options={{ title: t('goals.title') }} />
       </Stack>
       <UndoHost />
+      <PlanningHost />
     </View>
   );
 }

@@ -24,10 +24,15 @@ export function TransactionDetailScreen({
   id,
   onEdit,
   onDeleted,
+  onRepeat,
+  onOpenRule,
 }: {
   id: string;
   onEdit: (id: string) => void;
   onDeleted: () => void;
+  /** "Repeat…": make this transaction recurring (ADR-013). */
+  onRepeat?: (id: string) => void;
+  onOpenRule?: (ruleId: string) => void;
 }) {
   const session = useSession();
   const { repos, settings } = session;
@@ -223,6 +228,21 @@ export function TransactionDetailScreen({
         </Card>
         <Stack gap="sm">
           <Button label={t('common.edit')} onPress={() => onEdit(id)} testID="edit" />
+          {tx.recurringRuleId && onOpenRule ? (
+            <Button
+              label={t('planning.viewRule')}
+              variant="secondary"
+              onPress={() => onOpenRule(tx.recurringRuleId as string)}
+              testID="view-rule"
+            />
+          ) : !tx.recurringRuleId && tx.status === 'posted' && onRepeat ? (
+            <Button
+              label={t('planning.repeat')}
+              variant="secondary"
+              onPress={() => onRepeat(id)}
+              testID="repeat"
+            />
+          ) : null}
           <Button label={t('common.delete')} variant="danger" onPress={remove} testID="delete" />
         </Stack>
       </ScrollView>

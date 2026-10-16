@@ -57,7 +57,7 @@ export function exportTransactionsCsv(
      LEFT JOIN transaction_splits s ON s.transaction_id = t.id AND s.deleted_at IS NULL
      LEFT JOIN categories c ON c.id = s.category_id
      LEFT JOIN payees p ON p.id = t.payee_id
-     WHERE t.deleted_at IS NULL
+     WHERE t.deleted_at IS NULL AND t.status = 'posted'
      ORDER BY t.occurred_at, t.id, s.sort_order`,
   );
   const dec = (minor: number | null, currency: string | null) =>

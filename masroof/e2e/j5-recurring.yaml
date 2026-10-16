@@ -1,0 +1,39 @@
+# J5: make a transaction recurring ("Repeat…"), confirm-first mode, Upcoming inbox.
+# Back-fill, month-end clamping and clock changes need time travel: covered by
+# Jest (tests/node/services/recurring.test.ts), see docs/JOURNEY_COVERAGE.md.
+appId: app.masroof
+---
+- runFlow: flows/_onboard-skip.yaml
+- tapOn: 'Add transaction'
+- tapOn: '5'
+- tapOn: '0'
+- tapOn: '0'
+- tapOn: 'Home'
+- tapOn:
+    id: save
+- tapOn: 'Transactions'
+- tapOn: 'Home'
+- tapOn:
+    id: repeat
+- tapOn:
+    id: mode-confirm_before_post
+- tapOn:
+    id: recurring-save
+# Notification permission is asked in context, only now.
+- runFlow:
+    when:
+      visible: 'Allow'
+    commands:
+      - tapOn: 'Allow'
+- assertVisible:
+    id: view-rule
+- back
+- back
+- tapOn: 'Settings'
+- tapOn:
+    id: nav-recurring
+- assertVisible: '.*Ask me first.*'
+- back
+- tapOn:
+    id: nav-upcoming
+- assertVisible: 'Coming up (30 days)'

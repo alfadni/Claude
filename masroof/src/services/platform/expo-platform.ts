@@ -13,6 +13,8 @@ import {
   pickImage,
   type PickResult,
 } from '../attachments/expo-ports';
+import { expoNotifications } from '../notifications/expo-notifications';
+import type { NotificationsPort } from '../notifications/notifications';
 import type { ResetPorts } from '../reset/reset-service';
 import { createExpoVault, expoSecrets, isDeviceCompromised } from '../security/expo-security';
 import type { BiometricVault, Secrets } from '../security/lock-service';
@@ -35,6 +37,7 @@ export type Platform = Readonly<{
   resetPorts: (closeDatabase: () => void) => Omit<ResetPorts, 'wipeLock'>;
   reloadApp: () => void;
   appVersion: string;
+  notifications: NotificationsPort;
 }>;
 
 export const expoPlatform: Platform = {
@@ -58,6 +61,7 @@ export const expoPlatform: Platform = {
   resetPorts: expoResetPorts,
   reloadApp: () => void reloadAppAsync('data restored or reset'),
   appVersion: Constants.expoConfig?.version ?? '0.0.0',
+  notifications: expoNotifications,
 };
 
 export type { PickedFile };

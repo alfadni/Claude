@@ -114,7 +114,11 @@ export function createReportsRepository(
 
     /** True if anything at all has been recorded (drives the Home empty state). */
     hasAnyTransactions(): boolean {
-      return deps.sql.all('SELECT 1 FROM transactions WHERE deleted_at IS NULL LIMIT 1').length > 0;
+      return (
+        deps.sql.all(
+          `SELECT 1 FROM transactions WHERE deleted_at IS NULL AND status = 'posted' LIMIT 1`,
+        ).length > 0
+      );
     },
   };
 }

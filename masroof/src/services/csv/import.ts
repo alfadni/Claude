@@ -266,7 +266,7 @@ export function createCsvImporter(deps: DataDeps & { repos: Repositories }) {
         const key = `${account.id}|${date}|${type}|${amountMinor}|${normalizeName(note)}`;
         const existingDup =
           deps.sql.all(
-            `SELECT 1 FROM transactions WHERE deleted_at IS NULL AND account_id = ? AND occurred_on = ? AND type = ? AND amount_minor = ?
+            `SELECT 1 FROM transactions WHERE deleted_at IS NULL AND status = 'posted' AND account_id = ? AND occurred_on = ? AND type = ? AND amount_minor = ?
                AND lower(trim(coalesce(note, ''))) = ? LIMIT 1`,
             [account.id, date, type, amountMinor, normalizeName(note)],
           ).length > 0;

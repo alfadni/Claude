@@ -1,5 +1,7 @@
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { addDays } from '@/domain';
+import { silentNotifications } from '@/services/notifications/notifications';
 
 import type { AppDatabase } from '@/data/database';
 import { schema } from '@/data/schema';
@@ -54,6 +56,7 @@ const platform: Platform = {
   }),
   reloadApp: () => undefined,
   appVersion: 'test',
+  notifications: silentNotifications,
 };
 
 function plainDeps(raw = new Database(':memory:'), secrets = memorySecrets()): OpenDeps {
@@ -118,16 +121,77 @@ describe('boot store', () => {
     expect(Object.keys(s).sort()).toEqual([
       'boot',
       'bump',
+      'dismissPlanningNotice',
       'i18n',
       'kind',
       'refreshSecurity',
+      'requestNotifications',
       'resetWithoutDatabase',
+      'runPlanning',
       'status',
       'updateSetting',
     ]);
     expect(JSON.stringify({ status: s.status, kind: 'kind' in s ? s.kind : null })).not.toContain(
       '/private/path',
     );
+  });
+
+  it('J5/J2: the engine runs on open, and every write checks budget thresholds', async () => {
+    const raw = new Database(':memory:');
+    const secrets = memorySecrets();
+    await useBootStore.getState().boot(plainDeps(raw, secrets), platform);
+    let s = useBootStore.getState();
+    if (s.status !== 'ready') throw new Error('not ready');
+    const { repos } = s.services;
+    repos.settings.set('onboardingStep', 'done');
+    const account = repos.accounts.create({
+      name: 'Cash',
+      type: 'cash',
+      currency: 'SDG',
+      openingBalanceMinor: 0,
+      openedOn: null,
+      includeInTotals: true,
+    });
+    repos.categories.seedDefaults();
+    const food = repos.categories.list('expense').find((c) => c.seedKey === 'food');
+    if (!account.ok || !food) throw new Error('setup failed');
+    const today = repos.today();
+    const tx = repos.transactions.create({
+      type: 'expense',
+      accountId: account.value.id,
+      amountMinor: 1000,
+      occurredAt: Date.now(),
+      occurredTz: 'Africa/Khartoum',
+      occurredOn: addDays(today, -1),
+      splits: [{ categoryId: food.id, amountMinor: 1000 }],
+    });
+    if (!tx.ok) throw new Error('tx failed');
+    repos.recurring.createFromTransaction(tx.value.id, {
+      pattern: { frequency: 'daily', interval: 1 },
+      mode: 'auto_post',
+    });
+    // Next launch: yesterday's daily rule posts today's occurrence.
+    await useBootStore.getState().boot(plainDeps(raw, secrets), platform);
+    s = useBootStore.getState();
+    if (s.status !== 'ready') throw new Error('not ready');
+    expect(s.planning.notice).toMatchObject({ posted: 1, pending: 0 });
+    expect(s.planning.lastRunOn).toBe(today);
+
+    const r2 = s.services.repos;
+    r2.budgets.create({
+      categoryId: food.id,
+      period: 'monthly',
+      amountMinor: 2500,
+      rollover: false,
+      thresholds: [80],
+    });
+    useBootStore.getState().bump();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const sent = r2.budgets.statuses().flatMap((b) => b.evaluation?.reached ?? []);
+    expect(sent).toEqual([80]);
+    expect(raw.prepare('SELECT threshold FROM budget_alerts_sent').all()).toEqual([
+      { threshold: 80 },
+    ]);
   });
 
   it('ignores setting updates before the DB is ready', () => {

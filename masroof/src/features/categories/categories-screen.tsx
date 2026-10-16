@@ -3,12 +3,25 @@ import { ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { CategoryKind } from '@/domain';
-import { Banner, Button, ListRow, Row, Segmented, spacing, Text, TextField, useTheme } from '@/ui';
+import type { BudgetResolution } from '@/data/repositories/category-merge';
+import {
+  Banner,
+  Button,
+  Card,
+  Chip,
+  ListRow,
+  Row,
+  Segmented,
+  spacing,
+  Text,
+  TextField,
+  useTheme,
+} from '@/ui';
 
 import { useLedger, useSession } from '../session/session';
 import { useFormat } from '../session/use-format';
 
-/** Manage categories: add, rename, reorder, archive. Never hard-delete (spec 5.14). */
+/** Manage categories: add, rename, reorder, merge, archive. Never hard-delete (spec 5.14). */
 export function CategoriesScreen() {
   const session = useSession();
   const { repos } = session;
@@ -19,6 +32,10 @@ export function CategoriesScreen() {
   const [newName, setNewName] = useState('');
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [merging, setMerging] = useState<{ sourceId: string; targetId: string | null } | null>(
+    null,
+  );
   const all = useLedger((r) => r.categories.list(kind, { includeArchived: true }), [kind]);
   const active = all.filter((c) => !c.isArchived);
   const archived = all.filter((c) => c.isArchived);
@@ -27,6 +44,20 @@ export function CategoriesScreen() {
     setError(null);
     session.bump();
   };
+
+  /** J6: budgets move with the category; a clash asks keep/combine first. */
+  function merge(sourceId: string, targetId: string, resolution?: BudgetResolution) {
+    const r = repos.categoryMerge.merge(sourceId, targetId, resolution);
+    if (!r.ok) {
+      if (r.error === 'budget_conflict') return setMerging({ sourceId, targetId });
+      return setError(f.error(r.error));
+    }
+    setMerging(null);
+    setEditing(null);
+    setNotice(t('categories.merged'));
+    session.haptic('success');
+    done();
+  }
 
   function move(index: number, delta: number) {
     const ids = active.map((c) => c.id);
@@ -73,6 +104,57 @@ export function CategoriesScreen() {
           />
         </Row>
         {error ? <Banner tone="danger" message={error} /> : null}
+        {notice ? <Banner tone="info" message={notice} testID="merge-done" /> : null}
+        {merging ? (
+          <Card testID="merge-panel">
+            <Text variant="bodyStrong">
+              {t('categories.mergeTitle', {
+                name: f.categoryName(all.find((c) => c.id === merging.sourceId)),
+              })}
+            </Text>
+            <Text variant="caption" tone="muted">
+              {t('categories.mergeBody', {
+                name: f.categoryName(all.find((c) => c.id === merging.sourceId)),
+              })}
+            </Text>
+            {merging.targetId ? (
+              <>
+                <Banner tone="warning" message={t('categories.mergeConflict')} />
+                <Button
+                  label={t('categories.keepTarget')}
+                  variant="secondary"
+                  onPress={() => merge(merging.sourceId, merging.targetId as string, 'keep_target')}
+                  testID="merge-keep"
+                />
+                <Button
+                  label={t('categories.combine')}
+                  variant="secondary"
+                  onPress={() => merge(merging.sourceId, merging.targetId as string, 'combine')}
+                  testID="merge-combine"
+                />
+              </>
+            ) : (
+              <Row gap="sm" style={{ flexWrap: 'wrap' }}>
+                {active
+                  .filter((c) => c.id !== merging.sourceId)
+                  .map((c) => (
+                    <Chip
+                      key={c.id}
+                      icon={c.icon}
+                      label={f.categoryName(c)}
+                      onPress={() => merge(merging.sourceId, c.id)}
+                      testID={`merge-into-${c.id}`}
+                    />
+                  ))}
+              </Row>
+            )}
+            <Button
+              label={t('common.cancel')}
+              variant="secondary"
+              onPress={() => setMerging(null)}
+            />
+          </Card>
+        ) : null}
         {active.map((c, i) =>
           editing?.id === c.id ? (
             <Row key={c.id} gap="sm" align="flex-end">
@@ -90,6 +172,12 @@ export function CategoriesScreen() {
                   setEditing(null);
                   done();
                 }}
+              />
+              <Button
+                label={t('categories.merge')}
+                variant="secondary"
+                onPress={() => setMerging({ sourceId: c.id, targetId: null })}
+                testID={`merge-${c.id}`}
               />
             </Row>
           ) : (

@@ -12,6 +12,8 @@ export type ResetPorts = Readonly<{
   deleteAppFiles: () => void;
   deleteDatabaseKey: () => Promise<void>;
   wipeLock: () => Promise<void>;
+  /** Scheduled reminders would otherwise still fire with labels from the wiped data. */
+  cancelNotifications?: () => Promise<void>;
 }>;
 
 export type ResetResult = 'done' | 'confirmation_mismatch' | 'database_delete_failed';
@@ -31,5 +33,10 @@ export async function resetAllData(ports: ResetPorts, typed: string): Promise<Re
   }
   await ports.deleteDatabaseKey();
   await ports.wipeLock();
+  try {
+    await ports.cancelNotifications?.();
+  } catch {
+    // best effort: the data they referred to is already gone
+  }
   return 'done';
 }

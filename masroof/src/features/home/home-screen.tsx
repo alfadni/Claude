@@ -29,6 +29,7 @@ import {
 
 import { backupOverdue } from '@/domain/settings';
 
+import { BudgetCard } from '../budgets/budgets-screen';
 import { useLedger, useSession } from '../session/session';
 import { useFormat } from '../session/use-format';
 import { MonthCalendar } from './month-calendar';
@@ -37,6 +38,8 @@ type Tab = 'income' | 'balance' | 'expense';
 
 export type HomeNav = Readonly<{
   onBackup?: () => void;
+  onUpcoming?: () => void;
+  onBudgets?: () => void;
   onAdd: (date?: LocalDate) => void;
   onDay: (date: LocalDate) => void;
   onCategory: (categoryId: string, period: Period) => void;
@@ -46,7 +49,8 @@ export type HomeNav = Readonly<{
 }>;
 
 export function HomeScreen({ nav }: { nav: HomeNav }) {
-  const { repos, settings } = useSession();
+  const session = useSession();
+  const { repos, settings } = session;
   const f = useFormat();
   const { t } = f;
   const { colors } = useTheme();
@@ -66,6 +70,19 @@ export function HomeScreen({ nav }: { nav: HomeNav }) {
   const accounts = useLedger((r) => r.accounts.list(), []);
   const balances = useLedger((r) => r.accounts.balances(today), [today]);
   const catById = new Map(categories.map((c) => [c.id, c]));
+  const pendingCount = useLedger((r) => r.transactions.listPending().length, []);
+  const budgetStatuses = useLedger((r) => r.budgets.statuses(today), [today]);
+  const TONE_RANK = { over: 0, warning: 1, ok: 2 } as const;
+  const overall = budgetStatuses.find((b) => b.budget.categoryId === null && b.phase === 'active');
+  const strip = budgetStatuses
+    .filter((b) => b !== overall && b.phase === 'active' && b.evaluation)
+    .sort(
+      (a, b) =>
+        TONE_RANK[a.evaluation?.tone ?? 'ok'] - TONE_RANK[b.evaluation?.tone ?? 'ok'] ||
+        (b.evaluation?.percent ?? 0) - (a.evaluation?.percent ?? 0),
+    )
+    .slice(0, 3);
+  const notice = session.planningNotice;
 
   // Chevrons point "backwards/forwards" in reading direction.
   const [prevGlyph, nextGlyph] = I18nManager.isRTL ? ['›', '‹'] : ['‹', '›'];
@@ -126,6 +143,47 @@ export function HomeScreen({ nav }: { nav: HomeNav }) {
             action={{ label: t('security.makeBackup'), onPress: nav.onBackup }}
             testID="backup-reminder"
           />
+        ) : null}
+        {notice && nav.onUpcoming ? (
+          <Banner
+            tone="info"
+            message={
+              notice.pending > 0
+                ? t('planning.waitingNotice', { count: f.digits(notice.pending) })
+                : t('planning.recordedNotice', { count: f.digits(notice.posted) })
+            }
+            action={{
+              label: t('planning.open'),
+              onPress: () => {
+                session.dismissPlanningNotice();
+                nav.onUpcoming?.();
+              },
+            }}
+            testID="planning-notice"
+          />
+        ) : pendingCount > 0 && nav.onUpcoming ? (
+          <Banner
+            tone="info"
+            message={t('planning.waitingCount', { count: f.digits(pendingCount) })}
+            action={{ label: t('planning.open'), onPress: nav.onUpcoming }}
+            testID="upcoming-banner"
+          />
+        ) : null}
+        {budgetStatuses.length > 0 ? (
+          <Stack gap="sm" testID="budget-strip">
+            <Text variant="caption" tone="muted" accessibilityRole="header">
+              {t('budgets.healthTitle')}
+            </Text>
+            {overall ? <BudgetCard status={overall} f={f} onPress={nav.onBudgets} /> : null}
+            {strip.map((b) => (
+              <BudgetCard key={b.budget.id} status={b} f={f} compact onPress={nav.onBudgets} />
+            ))}
+            {!overall ? (
+              <Text variant="caption" tone="muted">
+                {t('budgets.setOverall')}
+              </Text>
+            ) : null}
+          </Stack>
         ) : null}
         {!hasAny ? (
           <EmptyState
