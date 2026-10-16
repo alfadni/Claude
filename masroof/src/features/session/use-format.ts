@@ -22,6 +22,18 @@ export function tDynamic(t: TFunction, key: string, options?: Record<string, unk
 
 const SEED_NAMES = new Map(SEED_CATEGORIES.map((s) => [s.seedKey, s.name]));
 
+/** Seeded categories show in the UI language until the user renames them. */
+export function localizedCategoryName(
+  t: TFunction,
+  c: { name: string; seedKey: string | null } | undefined,
+): string {
+  if (!c) return '';
+  if (c.seedKey && SEED_NAMES.get(c.seedKey) === c.name) {
+    return tDynamic(t, `categories.seed.${c.seedKey}`);
+  }
+  return c.name;
+}
+
 export function useFormat() {
   const { settings } = useSession();
   const { t } = useTranslation();
@@ -48,14 +60,8 @@ export function useFormat() {
         const { year, month } = parts(d);
         return t('dates.monthYear', { month: tDynamic(t, `months.${month}`), year: digits(year) });
       },
-      /** Seeded categories show in the UI language until the user renames them. */
-      categoryName(c: { name: string; seedKey: string | null } | undefined): string {
-        if (!c) return '';
-        if (c.seedKey && SEED_NAMES.get(c.seedKey) === c.name) {
-          return tDynamic(t, `categories.seed.${c.seedKey}`);
-        }
-        return c.name;
-      },
+      categoryName: (c: { name: string; seedKey: string | null } | undefined) =>
+        localizedCategoryName(t, c),
       error: (code: string) => tDynamic(t, `errors.${code}`),
       warning: (code: string) => tDynamic(t, `warnings.${code}`),
     };

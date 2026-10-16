@@ -23,7 +23,15 @@ import {
   createOnboardingService,
   type OnboardingService,
 } from '@/services/onboarding/onboarding-service';
+import type { NotificationPermission } from '@/services/notifications/notifications';
+import {
+  createPlanningService,
+  type PlanningRun,
+  type PlanningService,
+} from '@/services/planning/planning-service';
 import { expoPlatform, type Platform } from '@/services/platform/expo-platform';
+
+import { planningTexts } from '../planning/planning-texts';
 
 import type { SecurityState } from '../session/session';
 
@@ -43,6 +51,15 @@ export type Services = Readonly<{
   exportCsv: (categoryName: (c: { name: string; seedKey: string | null }) => string) => string;
   platform: Platform;
   device: DeviceDefaults;
+  planning: PlanningService;
+}>;
+
+export type PlanningState = Readonly<{
+  permission: NotificationPermission;
+  /** Last foreground run, shown once on Home ("rent recorded", J5). */
+  notice: PlanningRun | null;
+  /** Local date of the last engine run, to re-run on a new day. */
+  lastRunOn: string | null;
 }>;
 
 type Ready = {
@@ -55,6 +72,7 @@ type Ready = {
   /** Bumped after every write so screens re-read (J2: "update instantly"). */
   version: number;
   security: SecurityState;
+  planning: PlanningState;
 };
 
 export type BootState =
@@ -65,6 +83,11 @@ type BootStore = BootState & {
   updateSetting: <K extends SettingKey>(key: K, value: Settings[K]) => void;
   bump: () => void;
   refreshSecurity: () => Promise<void>;
+  /** Run the recurrence engine + budget alerts (app open, new day). */
+  runPlanning: () => Promise<void>;
+  /** Ask for notification permission in context (first rule or budget). */
+  requestNotifications: () => Promise<NotificationPermission>;
+  dismissPlanningNotice: () => void;
   /** J11 from the "key lost" boot error: no database is open, so only files and keys are wiped. */
   resetWithoutDatabase: (typed: string, platform?: Platform) => Promise<ResetResult>;
 };
@@ -92,6 +115,9 @@ export const useBootStore = create<BootStore>((set, get) => {
         bump: get().bump,
         refreshSecurity: get().refreshSecurity,
         resetWithoutDatabase: get().resetWithoutDatabase,
+        runPlanning: get().runPlanning,
+        requestNotifications: get().requestNotifications,
+        dismissPlanningNotice: get().dismissPlanningNotice,
       },
       true,
     );
@@ -161,11 +187,23 @@ export const useBootStore = create<BootStore>((set, get) => {
               {
                 ...platform.resetPorts(() => result.connection.close()),
                 wipeLock: () => lock.wipe(),
+                cancelNotifications: () => platform.notifications.cancelAll(),
               },
               typed,
             ),
           platform,
           device,
+          planning: createPlanningService({
+            ...data,
+            repos,
+            notifications: platform.notifications,
+            // Read the live instance: the language can change after boot.
+            texts: () => {
+              const s = get();
+              return planningTexts((s.status === 'ready' ? s.i18n : i18n).t, repos);
+            },
+            timeZone: () => readDeviceDefaults().timeZone,
+          }),
         };
         transition({
           status: 'ready',
@@ -175,7 +213,13 @@ export const useBootStore = create<BootStore>((set, get) => {
           restartRequired: false,
           version: 0,
           security: await readSecurity(lock, platform),
+          planning: {
+            permission: await platform.notifications.status(),
+            notice: null,
+            lastRunOn: null,
+          },
         });
+        await get().runPlanning();
       } catch {
         // No details: errors here may carry SQL or paths. Crash reporting is opt-in (Phase 5).
         transition({ status: 'error', kind: 'unexpected', i18n: get().i18n });
@@ -199,6 +243,49 @@ export const useBootStore = create<BootStore>((set, get) => {
       const state = get();
       if (state.status !== 'ready') return;
       set({ version: state.version + 1, settings: state.services.repos.settings.getAll() });
+      // Every write passes through here: check budget thresholds (J2, J6). Best effort.
+      void state.services.planning.afterWrite().catch(() => undefined);
+    },
+
+    async runPlanning() {
+      const state = get();
+      if (state.status !== 'ready') return;
+      const { planning, repos } = state.services;
+      // Nothing to plan before onboarding finishes.
+      if (state.settings.onboardingStep !== 'done') return;
+      try {
+        const run = await planning.run({ background: false });
+        const permission = await planning.permission();
+        const now = get();
+        if (now.status !== 'ready') return;
+        const changed = run.posted + run.pending > 0;
+        set({
+          version: now.version + (changed ? 1 : 0),
+          planning: {
+            permission,
+            notice: changed ? run : now.planning.notice,
+            lastRunOn: repos.today(),
+          },
+        });
+      } catch {
+        // Retried on the next open; the engine is idempotent.
+      }
+    },
+
+    async requestNotifications() {
+      const state = get();
+      if (state.status !== 'ready') return 'denied';
+      const permission = await state.services.planning.ensurePermission();
+      const now = get();
+      if (now.status === 'ready') set({ planning: { ...now.planning, permission } });
+      if (permission === 'granted') void state.services.planning.refreshReminders();
+      return permission;
+    },
+
+    dismissPlanningNotice() {
+      const state = get();
+      if (state.status !== 'ready') return;
+      set({ planning: { ...state.planning, notice: null } });
     },
 
     async resetWithoutDatabase(typed, platform = expoPlatform) {
@@ -209,7 +296,11 @@ export const useBootStore = create<BootStore>((set, get) => {
         now: Date.now,
       });
       return resetAllData(
-        { ...platform.resetPorts(() => undefined), wipeLock: () => lock.wipe() },
+        {
+          ...platform.resetPorts(() => undefined),
+          wipeLock: () => lock.wipe(),
+          cancelNotifications: () => platform.notifications.cancelAll(),
+        },
         typed,
       );
     },

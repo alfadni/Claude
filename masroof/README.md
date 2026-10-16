@@ -2,7 +2,7 @@
 
 Offline-first personal expense and income tracker for iOS and Android. Data never leaves the device: it is stored in an SQLCipher-encrypted database whose key lives in the Keychain / Android Keystore.
 
-> Status: **Phase 2 — Security & data safety** complete (on top of Phases 0–1). See [`docs/ADR`](docs/ADR) for decisions, [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) for choices awaiting your confirmation, and [`docs/JOURNEY_COVERAGE.md`](docs/JOURNEY_COVERAGE.md) for which test covers which journey path.
+> Status: **Phase 3 — Planning** complete (on top of Phases 0–2). See [`docs/ADR`](docs/ADR) for decisions, [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) for choices awaiting your confirmation, and [`docs/JOURNEY_COVERAGE.md`](docs/JOURNEY_COVERAGE.md) for which test covers which journey path.
 
 ## What works today
 
@@ -17,6 +17,18 @@ Offline-first personal expense and income tracker for iOS and Android. Data neve
 - **Encrypted backup & restore** (J9): `.masroof` files (Argon2id + AES-256-GCM), shared via the OS share sheet. Restore shows a preview, verifies everything before writing, migrates old backups forward, and saves a safety backup before replacing data.
 - **CSV export & import**: export carries a plain-text warning and a formula-injection guard. Import shows a preview with row-level errors, category mapping and duplicate skipping, and commits all-or-nothing.
 - **Reset** (J11): offers a backup first, requires typing `RESET`, and wipes in a safe order.
+- **Recurring transactions** (J5, ADR-013): "Repeat…" on any transaction.
+  - Schedules: daily, weekly (chosen weekdays), monthly (a day or the last day; the 31st clamps to short months) or yearly, every _n_ periods, with an optional end date or count.
+  - Three modes: record automatically, ask first, or remind only.
+  - The engine runs on open, when the app returns on a new day, and from background fetch. It is idempotent (`rule_id:date` key) and never duplicates or deletes, even if the clock moves backwards.
+  - A back-fill of more than 3 goes to review. The **Upcoming** inbox handles confirm / change amount / skip.
+- **Budgets** (J6, ADR-014):
+  - Monthly or weekly, per category (including sub-categories) or overall, with optional rollover.
+  - Alerts at 50/75/80/90/100%; each fires once per period, even after edits or deletes.
+  - "Safe to spend today", and a Home health strip (✓ / ⚠ / ⛔ plus text, never colour alone).
+  - Category merge moves budgets, splits and rules; if both categories have a budget, it asks first.
+- **Goals**: target, optional date and linked account; progress and the monthly amount needed.
+- **Local notifications**: asked in context (first rule or budget), never at launch. They never contain amounts. With permission denied, everything still works in-app.
 
 ## Requirements
 
@@ -46,13 +58,13 @@ Release builds: `npx eas-cli@latest build` (EAS config arrives in Phase 5).
 app/            Expo Router screens (thin; compose features + ui)
 src/domain/     pure TS: Money, FX, calculator, formatting, LocalDate, Period, ids, ledger rules
 src/data/       SQL migrations, Drizzle schema, unit of work + audit, repositories, read models
-src/services/   encrypted DB + key lifecycle, attachment encryption, onboarding, device ports
+src/services/   encrypted DB + key lifecycle, attachments, backup, CSV, lock, recurrence engine, notifications
 src/features/   screens + pure form state (home, quick-add, transactions, accounts, categories…)
 src/ui/         tokens, theme, RTL-safe primitives, AmountText, empty/loading/error states
 src/i18n/       en / ar resources, locale resolution, layout direction
 tests/node      domain + data + services + i18n (Node, better-sqlite3)
 tests/ui        screens against an in-memory ledger (jest-expo + Testing Library)
-e2e/            Maestro journey flows (j1, j2, j3, j4, j7)
+e2e/            Maestro journey flows (j1–j9, j11)
 ```
 
 Layering is `ui → features → services → domain ← data`, enforced by ESLint `no-restricted-imports`.
@@ -71,4 +83,4 @@ Layering is `ui → features → services → domain ← data`, enforced by ESLi
 
 ## Journey coverage
 
-See [`docs/JOURNEY_COVERAGE.md`](docs/JOURNEY_COVERAGE.md). Phases 1–2 cover J1, J2, J3, J4, J7, J8, J9 and J11. Budget alerts (J2) are deferred to Phase 3.
+See [`docs/JOURNEY_COVERAGE.md`](docs/JOURNEY_COVERAGE.md). Phases 1–3 cover J1–J9 and J11. J10 (base-currency change) arrives in Phase 4.

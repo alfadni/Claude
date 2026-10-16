@@ -53,6 +53,8 @@
           "supportedLocales": ["en", "ar"]
         }
       ],
+      "expo-notifications",
+      "expo-background-task",
       [
         "expo-splash-screen",
         {

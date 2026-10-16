@@ -9,6 +9,8 @@ export default function TransactionRoute() {
       id={id}
       onEdit={(txId) => router.push({ pathname: '/add', params: { id: txId } })}
       onDeleted={() => router.back()}
+      onRepeat={(txId) => router.push({ pathname: '/rule/[id]', params: { id: 'new', tx: txId } })}
+      onOpenRule={(ruleId) => router.push({ pathname: '/rule/[id]', params: { id: ruleId } })}
     />
   );
 }

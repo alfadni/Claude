@@ -6,7 +6,9 @@ import type { AttachmentService } from '@/services/attachments/attachment-servic
 import type { PickResult } from '@/services/attachments/expo-ports';
 import type { BackupService } from '@/services/backup/backup-service';
 import type { CsvImporter } from '@/services/csv/import';
+import type { NotificationPermission } from '@/services/notifications/notifications';
 import type { OnboardingService } from '@/services/onboarding/onboarding-service';
+import type { PlanningRun, PlanningService } from '@/services/planning/planning-service';
 import type { PickedFile } from '@/services/platform/expo-data-io';
 import type { ResetResult } from '@/services/reset/reset-service';
 import type { LockService } from '@/services/security/lock-service';
@@ -43,6 +45,13 @@ export type Session = Readonly<{
   shareBytes: (fileName: string, bytes: Uint8Array | string, mimeType: string) => Promise<void>;
   pickFile: (mimeTypes: string[]) => Promise<PickedFile | null>;
   reloadApp: () => void;
+  planning: PlanningService;
+  notificationPermission: NotificationPermission;
+  /** Result of the last engine run on open, until dismissed (J5 "user notified"). */
+  planningNotice: PlanningRun | null;
+  dismissPlanningNotice: () => void;
+  /** Asks only while undetermined; denied keeps everything in-app (J5). */
+  requestNotifications: () => Promise<NotificationPermission>;
 }>;
 
 const SessionContext = createContext<Session | null>(null);

@@ -69,6 +69,9 @@ export const recurringRules = sqliteTable('recurring_rules', {
   nextRunAt: integer('next_run_at'),
   lastRunAt: integer('last_run_at'),
   isPaused: bool('is_paused').default(false),
+  nextOccurrenceOn: text('next_occurrence_on'),
+  occurrenceCount: integer('occurrence_count').notNull().default(0),
+  lastError: text('last_error'),
 });
 
 export const transactions = sqliteTable('transactions', {

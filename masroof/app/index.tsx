@@ -43,6 +43,8 @@ export default function HomeRoute() {
           onSettings: () => router.push('/settings'),
           onAccounts: () => router.push('/accounts'),
           onBackup: () => router.push('/backup'),
+          onUpcoming: () => router.push('/upcoming'),
+          onBudgets: () => router.push('/budgets'),
         }}
       />
     </>

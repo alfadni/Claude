@@ -60,7 +60,18 @@ export function SettingsScreen({
   onChange: <K extends SettingKey>(key: K, value: Settings[K]) => void;
   onRestart: () => void;
   onNavigate?: (
-    to: 'accounts' | 'categories' | 'trash' | 'security' | 'backup' | 'data' | 'reset',
+    to:
+      | 'accounts'
+      | 'categories'
+      | 'trash'
+      | 'security'
+      | 'backup'
+      | 'data'
+      | 'reset'
+      | 'upcoming'
+      | 'recurring'
+      | 'budgets'
+      | 'goals',
   ) => void;
   t: TFunction;
 }) {
@@ -91,6 +102,35 @@ export function SettingsScreen({
               label={t('trash.title')}
               variant="secondary"
               onPress={() => onNavigate('trash')}
+            />
+          </Card>
+        ) : null}
+        {onNavigate ? (
+          <Card>
+            <Text variant="bodyStrong">{t('settings.planning')}</Text>
+            <Button
+              label={t('planning.upcomingTitle')}
+              variant="secondary"
+              onPress={() => onNavigate('upcoming')}
+              testID="nav-upcoming"
+            />
+            <Button
+              label={t('settings.recurring')}
+              variant="secondary"
+              onPress={() => onNavigate('recurring')}
+              testID="nav-recurring"
+            />
+            <Button
+              label={t('settings.budgets')}
+              variant="secondary"
+              onPress={() => onNavigate('budgets')}
+              testID="nav-budgets"
+            />
+            <Button
+              label={t('settings.goals')}
+              variant="secondary"
+              onPress={() => onNavigate('goals')}
+              testID="nav-goals"
             />
           </Card>
         ) : null}

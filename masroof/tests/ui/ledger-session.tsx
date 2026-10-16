@@ -14,7 +14,9 @@ import Database from 'better-sqlite3';
 import { createBackupService } from '@/services/backup/backup-service';
 import { exportTransactionsCsv } from '@/services/csv/export';
 import { createCsvImporter } from '@/services/csv/import';
+import type { NotificationPermission } from '@/services/notifications/notifications';
 import { createOnboardingService } from '@/services/onboarding/onboarding-service';
+import { createPlanningService, type PlanningRun } from '@/services/planning/planning-service';
 import type { PickedFile } from '@/services/platform/expo-data-io';
 import type { ResetResult } from '@/services/reset/reset-service';
 import { createLockService } from '@/services/security/lock-service';
@@ -24,7 +26,8 @@ import { betterSqliteExecutor } from '../helpers/sqlite';
 import { MemoryFiles } from '../helpers/backup';
 import { ThemeProvider } from '@/ui';
 
-import { createLedger, type Ledger } from '../helpers/ledger';
+import { createLedger, TZ, type Ledger } from '../helpers/ledger';
+import { fakeNotifications, testTexts, type FakeNotifications } from '../helpers/planning';
 
 const metrics = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -45,9 +48,13 @@ export type TestSession = {
   openSettings: jest.Mock;
   bumps: () => number;
   addResult: { next: AddResult['status'] | null };
+  notifications: FakeNotifications;
+  planningNotice: { current: PlanningRun | null };
 };
 
-export function createTestSession(options: { locale?: Locale; ledger?: Ledger } = {}): TestSession {
+export function createTestSession(
+  options: { locale?: Locale; ledger?: Ledger; permission?: NotificationPermission } = {},
+): TestSession {
   const ledger = options.ledger ?? createLedger();
   if (options.locale) ledger.repos.settings.set('locale', options.locale);
   let bumpCount = 0;
@@ -108,6 +115,15 @@ export function createTestSession(options: { locale?: Locale; ledger?: Ledger } 
   const reload = jest.fn();
   const backupFiles = new MemoryFiles();
   const holder: { session: Session } = {} as { session: Session };
+  const notifications = fakeNotifications(options.permission ?? 'granted');
+  const planning = createPlanningService({
+    ...ledger,
+    repos: ledger.repos,
+    notifications,
+    texts: () => testTexts,
+    timeZone: () => TZ,
+  });
+  const planningNotice: { current: PlanningRun | null } = { current: null };
   const session: Session = {
     repos: ledger.repos,
     onboarding: createOnboardingService({ ...ledger, repos: ledger.repos }),
@@ -160,6 +176,22 @@ export function createTestSession(options: { locale?: Locale; ledger?: Ledger } 
     shareBytes: share,
     pickFile: pickFileMock,
     reloadApp: reload,
+    planning,
+    get notificationPermission() {
+      return notifications.permission;
+    },
+    get planningNotice() {
+      return planningNotice.current;
+    },
+    dismissPlanningNotice: () => {
+      planningNotice.current = null;
+      bumpCount++;
+    },
+    requestNotifications: async () => {
+      const p = await planning.ensurePermission();
+      bumpCount++;
+      return p;
+    },
   };
   holder.session = session;
   return {
@@ -176,6 +208,8 @@ export function createTestSession(options: { locale?: Locale; ledger?: Ledger } 
     pickFileMock,
     resetMock,
     reload,
+    notifications,
+    planningNotice,
   };
 }
 
@@ -186,7 +220,13 @@ export async function renderWithSession(ui: ReactElement, ts: TestSession, local
       <I18nextProvider i18n={i18n}>
         <ThemeProvider preference="light">
           <SessionProvider
-            value={{ ...ts.session, settings: ts.session.settings, version: ts.bumps() }}
+            value={{
+              ...ts.session,
+              settings: ts.session.settings,
+              version: ts.bumps(),
+              notificationPermission: ts.session.notificationPermission,
+              planningNotice: ts.session.planningNotice,
+            }}
           >
             {node}
           </SessionProvider>

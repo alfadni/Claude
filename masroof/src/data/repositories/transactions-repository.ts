@@ -2,6 +2,9 @@ import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 
 import {
   computeBaseAmounts,
+  inputFromTemplate,
+  recurrenceKey,
+  startOfDayInZone,
   deriveRate,
   err,
   likePattern,
@@ -11,7 +14,9 @@ import {
   validateTransaction,
   type CurrencyCode,
   type EditScope,
+  type DecimalRate,
   type LocalDate,
+  type RecurringTemplate,
   type Result,
   type TransactionInput,
   type TransactionType,
@@ -82,6 +87,34 @@ export type ListItem = Readonly<{
 }>;
 
 export type Cursor = Readonly<{ occurredAt: number; id: string }>;
+
+export type PendingItem = ListItem &
+  Readonly<{ ruleId: string; mode: 'auto_post' | 'remind_only' | 'confirm_before_post' }>;
+
+export type OccurrenceOutcome = 'created' | 'exists';
+
+/** The editable input a stored transaction corresponds to (confirm with edits, re-validation). */
+export function inputFromDetail(d: TransactionDetail): TransactionInput {
+  return {
+    type: d.type,
+    accountId: d.accountId,
+    toAccountId: d.toAccountId,
+    amountMinor: d.amountMinor,
+    toAmountMinor: d.toAmountMinor,
+    occurredAt: d.occurredAt,
+    occurredTz: d.occurredTz,
+    occurredOn: d.occurredOn as LocalDate,
+    note: d.note,
+    payeeName: d.payeeName,
+    tagNames: d.tags.map((t) => t.name),
+    splits: d.splits.map((s) => ({
+      categoryId: s.categoryId,
+      amountMinor: s.amountMinor,
+      note: s.note,
+    })),
+    fxRateToBase: d.fxRateToBase as DecimalRate,
+  };
+}
 
 type Deps = DataDeps & {
   today: () => LocalDate;
@@ -240,7 +273,7 @@ export function createTransactionsRepository(deps: Deps) {
     }
   }
 
-  return {
+  const api = {
     get: (id: string) => detail(id),
 
     create(input: TransactionInput): Result<{ id: string; warnings: TxWarning[] }, WriteError[]> {
@@ -465,10 +498,176 @@ export function createTransactionsRepository(deps: Deps) {
       });
     },
 
+    /**
+     * Write one occurrence of a recurring rule (ADR-013). Idempotent on the
+     * recurrence key: an existing row with that key (any status, even
+     * deleted) is never duplicated. Joins the caller's unit of work.
+     */
+    createOccurrence(params: {
+      ruleId: string;
+      date: LocalDate;
+      timeZone: string;
+      template: RecurringTemplate;
+      status: 'posted' | 'pending_recurring';
+    }): Result<OccurrenceOutcome, WriteError[]> {
+      const key = recurrenceKey(params.ruleId, params.date);
+      const exists =
+        deps.sql.all('SELECT 1 FROM transactions WHERE recurrence_key = ?', [key]).length > 0;
+      if (exists) return ok('exists');
+      const account = deps.accounts.get(params.template.accountId);
+      const baseCurrency = deps.settings.get('baseCurrency');
+      const rate =
+        account && account.currency !== baseCurrency
+          ? deps.fx.latest(account.currency as CurrencyCode, baseCurrency, params.date)
+          : null;
+      const input = inputFromTemplate(
+        params.template,
+        {
+          occurredOn: params.date,
+          occurredAt: startOfDayInZone(params.date, params.timeZone) + 12 * 3_600_000,
+          occurredTz: params.timeZone,
+        },
+        rate,
+      );
+      const p = prepare(input);
+      if ('errors' in p) return err(p.errors ? [...p.errors] : []);
+      return withUnitOfWork(deps, (uow) => {
+        const id = uow.newId();
+        const row: TransactionRow = {
+          id,
+          createdAt: uow.now,
+          updatedAt: uow.now,
+          deletedAt: null,
+          version: 1,
+          type: input.type,
+          accountId: input.accountId,
+          toAccountId: input.type === 'transfer' ? (input.toAccountId ?? null) : null,
+          amountMinor: input.amountMinor,
+          currency: p.currency,
+          toAmountMinor: p.toAmountMinor,
+          toCurrency: p.toCurrency,
+          fxRateToBase: p.base.fxRateToBase,
+          baseAmountMinor: p.base.baseAmountMinor,
+          occurredAt: input.occurredAt,
+          occurredTz: input.occurredTz,
+          occurredOn: input.occurredOn,
+          payeeId: deps.names.upsertPayee(input.payeeName),
+          note: input.note?.trim() || null,
+          status: params.status,
+          recurringRuleId: params.ruleId,
+          recurrenceKey: key,
+        };
+        uow.tx.insert(transactions).values(row).run();
+        writeChildren(uow, id, input, p.base.splitBaseMinor);
+        uow.audit({ entity: 'transactions', entityId: id, action: 'create', after: detail(id) });
+        return ok('created' as const);
+      });
+    },
+
+    /** Make an existing transaction occurrence #1 of a new rule. */
+    linkToRule(id: string, ruleId: string, date: LocalDate): void {
+      const before = getRow(id);
+      if (!before) return;
+      withUnitOfWork(deps, (uow) => {
+        const after = {
+          ...before,
+          recurringRuleId: ruleId,
+          recurrenceKey: recurrenceKey(ruleId, date),
+          updatedAt: uow.now,
+          version: before.version + 1,
+        };
+        uow.tx.update(transactions).set(after).where(eq(transactions.id, id)).run();
+        uow.audit({ entity: 'transactions', entityId: id, action: 'update', before, after });
+      });
+    },
+
+    /** Occurrences waiting in the Upcoming inbox, oldest first. */
+    listPending(): PendingItem[] {
+      return deps.sql.all<PendingItem>(
+        `SELECT t.id, t.type, t.account_id AS accountId, t.to_account_id AS toAccountId,
+                t.amount_minor AS amountMinor, t.currency, t.to_amount_minor AS toAmountMinor,
+                t.to_currency AS toCurrency, t.base_amount_minor AS baseAmountMinor,
+                t.occurred_at AS occurredAt, t.occurred_on AS occurredOn, t.note,
+                p.name AS payeeName,
+                (SELECT s.category_id FROM transaction_splits s WHERE s.transaction_id = t.id
+                   AND s.deleted_at IS NULL ORDER BY s.amount_minor DESC, s.sort_order LIMIT 1) AS categoryId,
+                (SELECT count(*) FROM transaction_splits s WHERE s.transaction_id = t.id
+                   AND s.deleted_at IS NULL) AS splitCount,
+                0 AS attachmentCount,
+                r.id AS ruleId, r.mode AS mode
+         FROM transactions t
+         JOIN recurring_rules r ON r.id = t.recurring_rule_id
+         LEFT JOIN payees p ON p.id = t.payee_id
+         WHERE t.status = 'pending_recurring' AND t.deleted_at IS NULL
+         ORDER BY t.occurred_on, t.id`,
+      );
+    },
+
+    /**
+     * Post a pending occurrence, optionally with a new amount (J5 "confirm /
+     * edit amount"). Re-validated like any entry: an archived account or
+     * category blocks it with the usual errors.
+     */
+    confirmPending(
+      id: string,
+      amountMinor?: number,
+    ): Result<{ warnings: TxWarning[] }, WriteError[] | ['not_pending']> {
+      const d = detail(id);
+      if (!d || d.deletedAt !== null) return err(['not_found']);
+      if (d.status !== 'pending_recurring') return err(['not_pending']);
+      let input = inputFromDetail(d);
+      if (amountMinor !== undefined && amountMinor !== d.amountMinor) {
+        if (input.splits.length > 1) return err(['split_sum_mismatch']);
+        input = {
+          ...input,
+          amountMinor,
+          // Same-currency transfers mirror the amount; cross-currency keeps its received leg.
+          toAmountMinor: d.toCurrency === d.currency ? amountMinor : input.toAmountMinor,
+          splits: input.splits.map((s) => ({ ...s, amountMinor })),
+        };
+      }
+      return withUnitOfWork(deps, (uow) => {
+        // update() validates before writing, so an error here has written nothing.
+        const r = api.update(id, input, 'this_only');
+        if (!r.ok) return r;
+        uow.tx
+          .update(transactions)
+          .set({ status: 'posted', updatedAt: uow.now })
+          .where(eq(transactions.id, id))
+          .run();
+        uow.audit({
+          entity: 'transactions',
+          entityId: id,
+          action: 'update',
+          after: { status: 'posted' },
+        });
+        return ok({ warnings: r.value.warnings });
+      });
+    },
+
+    /** Skip a pending occurrence: voided, keeping its key so it never returns. */
+    skipPending(id: string): Result<true, 'not_found' | 'not_pending'> {
+      const before = getRow(id);
+      if (!before || before.deletedAt !== null) return err('not_found');
+      if (before.status !== 'pending_recurring') return err('not_pending');
+      return withUnitOfWork(deps, (uow) => {
+        const after = {
+          ...before,
+          status: 'void' as const,
+          updatedAt: uow.now,
+          version: before.version + 1,
+        };
+        uow.tx.update(transactions).set(after).where(eq(transactions.id, id)).run();
+        uow.audit({ entity: 'transactions', entityId: id, action: 'update', before, after });
+        return ok(true as const);
+      });
+    },
+
     list(filter: ListFilter, cursor: Cursor | null, limit = 50): ListItem[] {
       return query({ filter }, cursor, limit);
     },
   };
+  return api;
 
   function query(
     opts: { filter?: ListFilter; deleted?: boolean; cutoff?: number },
@@ -478,6 +677,8 @@ export function createTransactionsRepository(deps: Deps) {
     const where: string[] = [];
     const params: (string | number | null)[] = [];
     const f = opts.filter ?? {};
+    // Pending/void recurring occurrences live in the Upcoming inbox only (ADR-013).
+    where.push(`t.status = 'posted'`);
     if (opts.deleted) {
       where.push('t.deleted_at IS NOT NULL AND t.deleted_at >= ?');
       params.push(opts.cutoff ?? 0);
