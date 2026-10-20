@@ -2,7 +2,7 @@
   "name": "personal-assistant",
   "private": true,
   "type": "module",
-  "description": "agent project: personal-assistant",
+  "description": "Personal assistant BDK agent: notes, facts, and reminders",
   "scripts": {
     "check": "tsc --noEmit",
     "dev": "bdk dev"
