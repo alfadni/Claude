@@ -52,6 +52,8 @@ export type Session = Readonly<{
   dismissPlanningNotice: () => void;
   /** Asks only while undetermined; denied keeps everything in-app (J5). */
   requestNotifications: () => Promise<NotificationPermission>;
+  /** This build can send crash reports (has a DSN, ADR-017). */
+  crashReportsAvailable: boolean;
 }>;
 
 const SessionContext = createContext<Session | null>(null);

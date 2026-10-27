@@ -69,6 +69,7 @@ J2 also requires that a budget alert fires when a quick add crosses a threshold.
   - Nothing else changes: the engine and the inbox do not depend on notifications.
 - **Content:** no amounts, notes or balances, because notifications appear on the lock screen. The text names only the category or payee label and the event, for example "Food budget reached 80%" or "Rent is due today" (OPEN_QUESTIONS Q35).
 - **Recurring reminders:** for each active rule, the next occurrence is scheduled at 09:00 local time with identifier `recurring:<ruleId>`. Rescheduling replaces it and deleting or pausing the rule cancels it. One notification per rule keeps the app well under iOS's 64-pending limit.
+- **No push capability:** the `expo-notifications` plugin is configured with `enableRemoteNotifications: false`, so the app requests no `aps-environment` entitlement. Local notifications don't need it, it keeps the no-network posture (ADR-017), and it lets free Apple "Personal Team" accounts sign device builds.
 - **Android:** a `reminders` channel at default importance. `SCHEDULE_EXACT_ALARM` is not requested; inexact delivery is fine for a 09:00 reminder.
 
 ### Goals (`src/domain/planning/goal.ts`)

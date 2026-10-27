@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { addDays } from '@/domain';
+import { noCrashReporter } from '@/services/crash/crash-reporter';
 import { silentNotifications } from '@/services/notifications/notifications';
 
 import type { AppDatabase } from '@/data/database';
@@ -57,6 +58,7 @@ const platform: Platform = {
   reloadApp: () => undefined,
   appVersion: 'test',
   notifications: silentNotifications,
+  crashReporter: noCrashReporter,
 };
 
 function plainDeps(raw = new Database(':memory:'), secrets = memorySecrets()): OpenDeps {

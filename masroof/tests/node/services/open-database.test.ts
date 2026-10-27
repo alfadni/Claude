@@ -42,6 +42,7 @@ class FakeEncryptedFile {
         sql: {
           exec: (q) => (check(), real.exec(q), bind()),
           run: (q, p) => (check(), real.run(q, p), bind()),
+          runMany: (q, rows) => (check(), real.runMany(q, rows), bind()),
           all: <T>(q: string, p?: readonly (string | number | null)[]) => {
             check();
             const rows = real.all<T>(q, p);

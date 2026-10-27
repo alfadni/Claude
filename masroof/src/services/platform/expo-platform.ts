@@ -13,6 +13,7 @@ import {
   pickImage,
   type PickResult,
 } from '../attachments/expo-ports';
+import { createSentryReporter, type CrashReporter } from '../crash/crash-reporter';
 import { expoNotifications } from '../notifications/expo-notifications';
 import type { NotificationsPort } from '../notifications/notifications';
 import type { ResetPorts } from '../reset/reset-service';
@@ -38,6 +39,7 @@ export type Platform = Readonly<{
   reloadApp: () => void;
   appVersion: string;
   notifications: NotificationsPort;
+  crashReporter: CrashReporter;
 }>;
 
 export const expoPlatform: Platform = {
@@ -62,6 +64,12 @@ export const expoPlatform: Platform = {
   reloadApp: () => void reloadAppAsync('data restored or reset'),
   appVersion: Constants.expoConfig?.version ?? '0.0.0',
   notifications: expoNotifications,
+  // Only builds bundled with EXPO_PUBLIC_SENTRY_DSN can report crashes (ADR-017).
+  crashReporter: createSentryReporter({
+    dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+    release: `masroof@${Constants.expoConfig?.version ?? '0.0.0'}`,
+    load: () => import('@sentry/react-native'),
+  }),
 };
 
 export type { PickedFile };

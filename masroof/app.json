@@ -53,7 +53,12 @@
           "supportedLocales": ["en", "ar"]
         }
       ],
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "enableRemoteNotifications": false
+        }
+      ],
       "expo-background-task",
       [
         "expo-splash-screen",
@@ -62,7 +67,8 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      "./plugins/with-release-permissions"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -314,6 +314,7 @@ export const en = {
     reports: 'Reports',
     fx: 'Exchange rates',
     currency: 'Main currency',
+    privacy: 'Privacy',
   },
   weekdays: {
     short: {
@@ -479,6 +480,22 @@ export const en = {
     failed: 'The data could not be erased. Nothing was changed.',
   },
   privacy: {
+    title: 'Privacy',
+    intro: 'Masroof is built so your financial data never leaves your phone unless you send it.',
+    points: {
+      device:
+        'Everything stays on this phone, encrypted (SQLCipher, AES-256). There is no account and no cloud.',
+      network:
+        'The app does not connect to the internet. Your transactions, notes and photos are never uploaded.',
+      notifications: 'Reminders and budget alerts never show amounts or notes on the lock screen.',
+      backups:
+        'Backups are encrypted with a passphrase only you know. CSV exports are plain text: the app warns you before sharing one.',
+      deletion: 'Reset erases the database, photos and keys from this phone.',
+    },
+    crashTitle: 'Send anonymous crash reports',
+    crashBody:
+      'If the app crashes, send only the technical location of the error (file, line, app and OS version). Never amounts, notes, names, accounts or screenshots. Off unless you turn it on.',
+    crashUnavailable: 'This version of the app cannot send crash reports.',
     hidden: 'Masroof',
   },
   planning: {

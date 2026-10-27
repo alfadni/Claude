@@ -28,6 +28,14 @@ export function executor(raw: SQLiteDatabase): SqlExecutor {
     run: (sql, params: readonly SqlValue[] = []) => {
       raw.runSync(sql, [...params]);
     },
+    runMany: (sql, rows) => {
+      const statement = raw.prepareSync(sql);
+      try {
+        for (const params of rows) statement.executeSync([...params]);
+      } finally {
+        statement.finalizeSync();
+      }
+    },
     all: <T>(sql: string, params: readonly SqlValue[] = []) => raw.getAllSync<T>(sql, [...params]),
     transaction: <T>(fn: () => T): T => {
       let result: T | undefined;
